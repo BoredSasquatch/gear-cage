@@ -1,10 +1,11 @@
 /* Example data for demo mode (used only when config.js has no Supabase details). Everything is marked as an example. */
 window.GC_DEMO_SEED=function(St){
   const S=St.S,G=window.GC,id=()=>St.uuid();
+  S.settings.usd_rate=300;S.settings.rate_source="Example rate";S.settings.currency="LKR";
   const crewA={id:id(),name:"Kasun (example crew)",email:"",role:"crew"},crewB={id:id(),name:"Dilini (example crew)",email:"",role:"crew"};
   S.profiles.set(crewA.id,crewA);S.profiles.set(crewB.id,crewB);
   const T={};const add=(tag,name,o)=>{const r=Object.assign({id:id(),tag,name,brand:"",model:"",category:"Accessory",serial:"",room:"",shelf:"",is_case:false,home_case_id:null,in_case_id:null,critical:false,status:"available",
-    purchase_cost:null,purchase_date:"2024-03-12",replacement_cost:null,supplier:"",service_days:null,last_serviced:null,companions:[],notes:"",example:true},o);T[tag]=r;S.items.set(r.id,r);return r;};
+    cost_currency:"USD",purchase_cost:null,purchase_date:"2024-03-12",replacement_cost:null,supplier:"",service_days:null,last_serviced:null,companions:[],notes:"",example:true},o);T[tag]=r;S.items.set(r.id,r);return r;};
   add("CSE-0001","Pelican 1610, A-cam body case",{brand:"Pelican",category:"Case",is_case:true,room:"Cage A",shelf:"Floor",purchase_cost:389,replacement_cost:419});
   add("CSE-0002","Pelican 1510, lens case",{brand:"Pelican",category:"Case",is_case:true,room:"Cage B",shelf:"Floor",purchase_cost:259,replacement_cost:279});
   add("CSE-0003","Cable and power bag",{category:"Case",is_case:true,room:"Cage B",shelf:"Cable drawer",purchase_cost:45,replacement_cost:49,notes:"Packed differently each shoot"});

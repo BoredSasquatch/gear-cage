@@ -7,9 +7,13 @@ const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&
 const LSx={get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d;}catch(e){return d;}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}};
 
 /* ---------- formatting ---------- */
-function money(n){if(n===null||n===undefined||n===""||isNaN(n))return"—";n=Number(n);const whole=Math.round(n)===n;
-  try{return new Intl.NumberFormat(undefined,{style:"currency",currency:S.settings.currency||"LKR",minimumFractionDigits:whole?0:2,maximumFractionDigits:whole?0:2}).format(n);}
-  catch(e){return(S.settings.currency||"")+" "+n.toFixed(whole?0:2);}}
+/* money(n): a value already in the display currency. moneyIn(v,cur): a stored price in its own currency, with the converted amount after it. */
+function fmtCur(n,cur){if(n===null||n===undefined||n===""||isNaN(n))return"—";n=Number(n);if(cur==="LKR")n=Math.round(n);else n=Math.round(n*100)/100;const whole=Math.round(n)===n;
+  try{return new Intl.NumberFormat(undefined,{style:"currency",currency:cur,currencyDisplay:cur==="LKR"?"code":"symbol",minimumFractionDigits:whole?0:2,maximumFractionDigits:whole?0:2}).format(n);}
+  catch(e){return cur+" "+n.toFixed(whole?0:2);}}
+function money(n){return fmtCur(n,G.dispCur());}
+function moneyIn(v,cur){if(v===null||v===undefined||v==="")return"—";cur=cur==="USD"?"USD":"LKR";const s=fmtCur(v,cur);
+  if(cur===G.dispCur())return s;const c=G.toDisp(v,cur);return c?`${s} (≈ ${money(c)})`:`${s} (set an exchange rate to convert)`;}
 function fmtDate(s){if(!s)return"—";const d=G.parseD(s);if(!d||isNaN(d))return"—";return d.toLocaleDateString(undefined,{weekday:undefined,day:"numeric",month:"short",year:d.getFullYear()===new Date().getFullYear()?undefined:"numeric"});}
 function fmtWhen(s){if(!s)return"";const d=new Date(s);const mins=Math.round((Date.now()-d)/6e4);
   if(mins<1)return"just now";if(mins<60)return mins+" min ago";if(mins<1440&&d.getDate()===new Date().getDate())return d.toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"});
@@ -94,6 +98,7 @@ function syncHTML(){
 function bannersHTML(){let h="";
   if(S.mode==="demo")h+=`<div class="banner"><div class="grow"><b>Demo mode.</b> Example gear, saved on this device only. Follow the setup guide to connect Supabase and share it with your crew.</div></div>`;
   if(S.error)h+=`<div class="banner bad"><div class="grow">${esc(S.error)}</div></div>`;
+  if(G.needsRate())h+=`<div class="banner"><div class="grow"><b>Some prices are in ${G.dispCur()==="LKR"?"US dollars":"rupees"}.</b> Set an exchange rate so totals include them.</div>${isAdmin()?`<a class="btn small" href="#settings">Set rate</a>`:""}</div>`;
   if(S.failed.length)h+=`<div class="banner bad"><div class="grow">${S.failed.length} change${S.failed.length>1?"s":""} couldn't be saved to the server.</div><a class="btn small" href="#settings">See details</a></div>`;
   if(G.items().some(i=>i.example)&&S.mode!=="demo")h+=`<div class="banner"><div class="grow">Example data is loaded. Remove it once your own gear is in.</div><a class="btn small" href="#settings">Remove examples</a></div>`;
   return h;}
@@ -142,7 +147,7 @@ function vHome(){
     <div class="kpi"><span class="eyebrow">Out now</span><span class="v">${out.length}</span><span class="s">${money(G.sum(out,G.repl))} of gear</span></div>
     <div class="kpi ${lost.length?"alert":""}"><span class="eyebrow">Missing</span><span class="v">${lost.length}</span><span class="s">${money(G.sum(lost,G.repl))} to replace</span></div>
     <div class="kpi hero"><span class="eyebrow">Cost to replace</span><span class="v">${money(G.sum(live.filter(i=>i.status!=="lost"),G.repl))}</span><span class="s">Everything in the cage</span></div>
-    <div class="kpi"><span class="eyebrow">Invested</span><span class="v">${money(G.sum(live,i=>G.num(i.purchase_cost)))}</span><span class="s">${live.length} items</span></div></div>
+    <div class="kpi"><span class="eyebrow">Invested</span><span class="v">${money(G.sum(live,G.buy))}</span><span class="s">${live.length} items</span></div></div>
   <div class="panel"><div class="ptitle"><h2>Needs attention</h2></div>
     ${[...overdue.map(j=>`<div class="row click" data-act="open-job" data-id="${j.id}">${chip("Overdue","bad")}<div class="grow">${esc(j.name)} <span class="small muted">due ${fmtDate(j.due_on)}</span></div></div>`),
       ...clashes.map(x=>`<div class="row click" data-act="open-job" data-id="${x.j.id}">${chip("Clash","warn")}<div class="grow">${esc(x.j.name)} <span class="small muted">${x.n} item${x.n>1?"s":""} not available</span></div></div>`),
@@ -281,7 +286,7 @@ function vGear(){
   const live=G.items().filter(i=>i.status!=="retired");
   return `<div class="head"><div class="sp"><span class="eyebrow">Gear · ${live.length} items</span><h1>Everything in the cage</h1></div>
     <button class="btn" data-act="export">Export</button><button class="btn" data-write data-act="import">Import</button><button class="btn primary" data-write data-act="add-item">Add gear</button></div>
-  <div class="kpis"><div class="kpi"><span class="eyebrow">Invested</span><span class="v">${money(G.sum(live,i=>G.num(i.purchase_cost)))}</span><span class="s">What you paid</span></div>
+  <div class="kpis"><div class="kpi"><span class="eyebrow">Invested</span><span class="v">${money(G.sum(live,G.buy))}</span><span class="s">What you paid</span></div>
     <div class="kpi hero"><span class="eyebrow">Replacement value</span><span class="v">${money(G.sum(live.filter(i=>i.status!=="lost"),G.repl))}</span><span class="s">To rebuy today</span></div>
     <div class="kpi"><span class="eyebrow">Showing</span><span class="v">${rows.length}</span><span class="s">${money(G.sum(rows,G.repl))}</span></div></div>
   <div class="toolbar"><input class="input" id="gear-q" data-keep placeholder="Search tag, name, serial, shelf" value="${esc(q)}" aria-label="Search gear">
@@ -307,12 +312,12 @@ function vItem(){
   ${i.is_case?`<div class="grid2"><div class="panel"><div class="ptitle"><h2>Lives in this case</h2><span class="small muted">Fixed contents</span></div>${list(G.caseContents(i.id))||`<div class="empty">No fixed contents. Set an item's home case to this case to add it.</div>`}</div>
     <div class="panel"><div class="ptitle"><h2>Packed in it now</h2></div>${list(G.packedIn(i.id))||`<div class="empty">Empty.</div>`}</div></div>`:""}
   <div class="panel pad"><dl class="facts">${[["Brand and model",[i.brand,i.model].filter(Boolean).join(" ")],["Serial",i.serial],["Shelf",[i.room,i.shelf].filter(Boolean).join(" · ")],["Home case",home?home.tag+" "+home.name:""],
-    ["Purchased",fmtDate(i.purchase_date)],["Supplier",i.supplier],["Purchase cost",money(i.purchase_cost)],["Replacement cost",money(G.repl(i))],["Service every",G.num(i.service_days)?i.service_days+" days":""],["Last serviced",fmtDate(i.last_serviced)]]
+    ["Purchased",fmtDate(i.purchase_date)],["Supplier",i.supplier],["Purchase cost",moneyIn(i.purchase_cost,i.cost_currency)],["Replacement cost",money(G.repl(i))],["Service every",G.num(i.service_days)?i.service_days+" days":""],["Last serviced",fmtDate(i.last_serviced)]]
     .map(f=>`<div><dt>${f[0]}</dt><dd>${esc(f[1]||"—")}</dd></div>`).join("")}</dl>${i.notes?`<p style="margin:12px 0 0">${esc(i.notes)}</p>`:""}</div>
   ${comps.length?`<div class="panel"><div class="ptitle"><h2>Always goes out with</h2></div>${list(comps)}</div>`:""}
   ${kits.length?`<div class="panel pad"><span class="eyebrow">In kits</span><div>${kits.map(k=>esc(k.name)).join(", ")}</div></div>`:""}
   <div class="panel"><div class="ptitle"><h2>Maintenance</h2><button class="btn small" data-write data-act="add-maint" data-item="${i.id}">Log</button></div>
-    ${recs.map(r=>`<div class="row click" data-act="edit-maint" data-id="${r.id}"><div class="grow">${fmtDate(r.date)} · ${esc(r.type)}<div class="small muted">${esc(r.description)}</div></div>${r.status==="open"?chip("Open","warn"):""}<span class="num small">${money(r.cost)}</span></div>`).join("")||`<div class="empty">Nothing logged.</div>`}</div>
+    ${recs.map(r=>`<div class="row click" data-act="edit-maint" data-id="${r.id}"><div class="grow">${fmtDate(r.date)} · ${esc(r.type)}<div class="small muted">${esc(r.description)}</div></div>${r.status==="open"?chip("Open","warn"):""}<span class="num small">${money(G.mcost(r))}</span></div>`).join("")||`<div class="empty">Nothing logged.</div>`}</div>
   <div class="panel"><div class="ptitle"><h2>History</h2></div>${hist.loading?`<div class="empty">Loading…</div>`:hist.rows.slice(0,40).map(e=>{const j=e.job_id&&S.jobs.get(e.job_id);const c=e.case_id&&G.item(e.case_id);
     return `<div class="row"><div class="grow"><b style="text-transform:capitalize">${esc(e.action)}</b>${j?" · "+esc(j.name):""}${c?" · in "+esc(c.tag):""}${e.note?" · "+esc(e.note):""}<div class="small muted">${fmtWhen(e.at)}${e.by?" · "+esc(G.personName(e.by)):""}</div></div></div>`;}).join("")||`<div class="empty">No scans yet.</div>`}</div>
   <div style="display:flex;gap:8px;flex-wrap:wrap" data-write><button class="btn" data-act="dup-item" data-id="${i.id}">Duplicate</button>${isAdmin()?`<button class="btn danger" data-act="del-item" data-id="${i.id}" data-confirm="Delete for good?">Delete</button>`:""}</div>
@@ -336,12 +341,12 @@ function vMaint(){const recs=[...S.maintenance.values()].sort((a,b)=>String(b.da
   return `<div class="head"><div class="sp"><span class="eyebrow">Maintenance</span><h1>Service and repairs</h1></div><button class="btn primary" data-write data-act="add-maint">Log</button></div>
   <div class="kpis"><div class="kpi"><span class="eyebrow">Open</span><span class="v">${recs.filter(r=>r.status==="open").length}</span><span class="s">Repairs and services</span></div>
     <div class="kpi"><span class="eyebrow">Service due</span><span class="v">${due.filter(d=>d.left<=0).length}</span><span class="s">${due.filter(d=>d.left>0).length} more within 14 days</span></div>
-    <div class="kpi"><span class="eyebrow">Spent in ${yr}</span><span class="v">${money(G.sum(recs.filter(r=>String(r.date).startsWith(yr)),r=>G.num(r.cost)))}</span><span class="s">${money(G.sum(recs,r=>G.num(r.cost)))} all time</span></div></div>
+    <div class="kpi"><span class="eyebrow">Spent in ${yr}</span><span class="v">${money(G.sum(recs.filter(r=>String(r.date).startsWith(yr)),G.mcost))}</span><span class="s">${money(G.sum(recs,G.mcost))} all time</span></div></div>
   ${due.length?`<div class="panel" style="margin-bottom:14px"><div class="ptitle"><h2>Service schedule</h2></div>${due.map(d=>`<div class="row">${tagHTML(d.item)}<div class="grow"><b>${esc(d.item.name)}</b><div class="small muted">Every ${d.item.service_days} days · last ${fmtDate(d.item.last_serviced||d.item.purchase_date)}</div></div>
     ${chip(d.left<0?-d.left+"d overdue":d.left===0?"Due today":"Due "+fmtDate(d.due),d.left<0?"bad":d.left===0?"warn":"")}<button class="btn small" data-write data-act="add-maint" data-item="${d.item.id}" data-type="Service">Log</button></div>`).join("")}</div>`:""}
   <div class="panel"><div class="ptitle"><h2>Log</h2><div class="seg">${[["open","Open"],["done","Done"],["all","All"]].map(o=>`<button class="${UI.mFilter===o[0]?"on":""}" data-act="mfilter" data-v="${o[0]}">${o[1]}</button>`).join("")}</div></div>
     ${shown.map(r=>{const i=G.item(r.item_id);return `<div class="row click" data-act="edit-maint" data-id="${r.id}">${tagHTML(i)}<div class="grow"><b>${esc(i?i.name:"Deleted item")}</b><div class="small muted">${fmtDate(r.date)} · ${esc(r.type)} · ${esc(r.description)}</div></div>
-      <span class="num small">${money(r.cost)}</span>${r.status==="open"?`<button class="btn small" data-write data-act="done-maint" data-id="${r.id}">Done</button>`:chip("Done","ok")}</div>`;}).join("")||`<div class="empty">${UI.mFilter==="open"?"No open maintenance.":"Nothing logged yet."}</div>`}</div>`;}
+      <span class="num small">${money(G.mcost(r))}</span>${r.status==="open"?`<button class="btn small" data-write data-act="done-maint" data-id="${r.id}">Done</button>`:chip("Done","ok")}</div>`;}).join("")||`<div class="empty">${UI.mFilter==="open"?"No open maintenance.":"Nothing logged yet."}</div>`}</div>`;}
 
 /* ---------- labels ---------- */
 function labelPool(){const f=UI.labelFilter;const q=val("label-q").toLowerCase();
@@ -380,7 +385,12 @@ function vSettings(){const n=St.pending();
   <div class="stack">
   <form class="panel pad stack" data-form="me"><h2>You</h2><label class="f">Your name, as the crew sees it<input class="input" name="name" value="${esc(S.me&&S.me.name||"")}"></label><div><button class="btn primary">Save</button></div></form>
   ${isAdmin()?`<form class="panel pad stack" data-form="studio"><h2>Studio</h2><div class="fg"><label class="f">Studio name<input class="input" name="studio" value="${esc(S.settings.studio||"")}"></label>
-    <label class="f">Currency<select class="input" name="currency">${["LKR","USD","EUR","GBP","AUD","INR","SGD","AED"].map(c=>`<option ${c===S.settings.currency?"selected":""}>${c}</option>`).join("")}</select></label></div><div><button class="btn primary">Save</button></div></form>`:""}
+    <label class="f">Show prices in<select class="input" name="currency"><option value="LKR" ${G.dispCur()==="LKR"?"selected":""}>Sri Lankan rupees (LKR)</option><option value="USD" ${G.dispCur()==="USD"?"selected":""}>US dollars (USD)</option></select><span class="hint">Each item keeps the price you paid in its own currency. Totals are converted with the rate below.</span></label></div>
+    <div class="fg"><label class="f">Exchange rate: rupees per 1 US dollar<input class="input" name="usd_rate" id="usd-rate" type="number" step="0.01" min="0" value="${esc(S.settings.usd_rate??"")}" placeholder="e.g. 300.50"></label>
+      <label class="f">Rate date<input class="input" type="date" name="rate_date" id="rate-date" value="${esc(S.settings.rate_date||"")}"></label>
+      <label class="f">Source<input class="input" name="rate_source" id="rate-source" value="${esc(S.settings.rate_source||"")}" placeholder="CBSL indicative rate"></label></div>
+    <div class="small muted">For the official rate, copy today's indicative USD rate from the <a href="https://www.cbsl.gov.lk/en/rates-and-indicators/exchange-rates/usd-lkr-Indicative-rate-chart" target="_blank" rel="noopener">Central Bank of Sri Lanka</a>. Or fetch the current market rate, which is close to the CBSL rate but not the same.</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary">Save</button><button type="button" class="btn" data-act="fetch-rate">Get today's market rate</button></div></form>`:""}
   <div class="panel pad stack"><h2>Sync</h2><div>${S.mode==="demo"?"Demo mode: everything stays on this device.":`${S.online?"Online":"Offline"} · ${n?`${n} change${n>1?"s":""} waiting to sync`:"all changes synced"}${S.lastSync?" · last synced "+fmtWhen(S.lastSync):""}`}</div>
     ${S.failed.length?`<div class="banner bad"><div class="grow">${S.failed.length} change${S.failed.length>1?"s were":" was"} refused by the server: ${esc(S.failed.slice(-3).map(f=>f.message).join("; "))}</div><button class="btn small" data-act="clear-failed">Dismiss</button></div>`:""}
     <div style="display:flex;gap:8px;flex-wrap:wrap">${S.mode!=="demo"?`<button class="btn" data-act="sync">Sync now</button>`:""}<button class="btn" data-act="export">Export gear as CSV</button></div></div>
@@ -415,7 +425,8 @@ function itemForm(id,base){const i=id?G.item(id):Object.assign({category:"Camera
     <datalist id="dl-rooms">${rooms.map(r=>`<option value="${esc(r)}">`).join("")}</datalist><datalist id="dl-shelves">${shelves.map(r=>`<option value="${esc(r)}">`).join("")}</datalist>
     <div class="fg"><label class="f">Brand<input class="input" name="brand" value="${esc(i.brand)}"></label><label class="f">Model<input class="input" name="model" value="${esc(i.model)}"></label><label class="f">Serial number<input class="input" name="serial" value="${esc(i.serial)}"></label></div>
     <label class="chk"><input type="checkbox" name="critical" ${i.critical?"checked":""}><span><b>Critical or easy to forget</b><br><span class="hint">Small parts and cables a shoot can't run without. Flagged on every pull sheet and check-in.</span></span></label>
-    <div class="fg"><label class="f">Purchase cost<input class="input" name="purchase_cost" type="number" step="0.01" min="0" value="${esc(i.purchase_cost)}"></label><label class="f">Purchase date<input class="input" name="purchase_date" type="date" value="${esc(i.purchase_date)}"></label>
+    <div class="fg"><label class="f">Prices in<select class="input" name="cost_currency"><option value="LKR" ${(i.cost_currency||G.dispCur())==="LKR"?"selected":""}>Rupees (LKR)</option><option value="USD" ${(i.cost_currency||G.dispCur())==="USD"?"selected":""}>US dollars (USD)</option></select><span class="hint">The currency you paid in</span></label>
+      <label class="f">Purchase cost<input class="input" name="purchase_cost" type="number" step="0.01" min="0" value="${esc(i.purchase_cost)}"></label><label class="f">Purchase date<input class="input" name="purchase_date" type="date" value="${esc(i.purchase_date)}"></label>
       <label class="f">Replacement cost<input class="input" name="replacement_cost" type="number" step="0.01" min="0" value="${esc(i.replacement_cost)}"></label><label class="f">Supplier<input class="input" name="supplier" value="${esc(i.supplier)}"></label></div>
     <div class="fg"><label class="f">Service every (days)<input class="input" name="service_days" type="number" min="0" value="${esc(i.service_days)}"></label><label class="f">Last serviced<input class="input" name="last_serviced" type="date" value="${esc(i.last_serviced)}"></label>
       ${isNew?`<label class="f">How many identical units?<input class="input" name="copies" type="number" min="1" max="50" value="1"><span class="hint">Each gets its own tag</span></label>`:`<label class="f">Status<select class="input" name="status">${Object.entries(G.STATUS).map(([k,v])=>`<option value="${k}" ${k===i.status?"selected":""}>${v[0]}</option>`).join("")}</select></label>`}</div>
@@ -429,7 +440,7 @@ function pickerHTML(){const p=M.picker;const picked=p.ids.map(G.item).filter(Boo
 function rerenderPicker(){const el=$("#picker");if(!el)return;const had=document.activeElement&&document.activeElement.id==="pick-q";el.innerHTML=pickerHTML();if(had){const i=$("#pick-q");i.focus();i.setSelectionRange(i.value.length,i.value.length);}}
 function submitItem(f){const fd=new FormData(f);const g=k=>String(fd.get(k)??"").trim();const n=k=>g(k)===""?null:Number(g(k));
   const d={name:g("name"),category:g("category"),tag:g("tag").toUpperCase(),brand:g("brand"),model:g("model"),serial:g("serial"),room:g("room"),shelf:g("shelf"),is_case:fd.get("is_case")==="on",home_case_id:g("home_case_id")||null,
-    critical:fd.get("critical")==="on",purchase_cost:n("purchase_cost"),purchase_date:g("purchase_date")||null,replacement_cost:n("replacement_cost"),supplier:g("supplier"),service_days:n("service_days"),last_serviced:g("last_serviced")||null,notes:g("notes"),companions:M.picker.ids.slice()};
+    critical:fd.get("critical")==="on",cost_currency:g("cost_currency")==="USD"?"USD":"LKR",purchase_cost:n("purchase_cost"),purchase_date:g("purchase_date")||null,replacement_cost:n("replacement_cost"),supplier:g("supplier"),service_days:n("service_days"),last_serviced:g("last_serviced")||null,notes:g("notes"),companions:M.picker.ids.slice()};
   const err=$("#f-err");if(!d.name){err.textContent="Give the item a name.";return;}if(!d.tag){err.textContent="Give the item a tag.";return;}
   if(M.id){if(G.items().some(i=>i.id!==M.id&&String(i.tag).toUpperCase()===d.tag)){err.textContent=`Tag ${d.tag} is already used.`;return;}
     const old=G.item(M.id);d.status=g("status")||old.status;if(d.home_case_id!==old.home_case_id&&old.status==="available")d.in_case_id=d.home_case_id;
@@ -451,7 +462,8 @@ function maintForm(id,itemId,type){const r=id?S.maintenance.get(id):{item_id:ite
     <div class="fg"><label class="f">Date<input class="input" type="date" name="date" value="${esc(r.date)}"></label><label class="f">Type<select class="input" name="type">${["Service","Repair","Cleaning","Sensor clean","Firmware","Calibration","Inspection"].map(t=>`<option ${t===r.type?"selected":""}>${t}</option>`).join("")}</select></label>
       <label class="f">Status<select class="input" name="status"><option value="open" ${r.status==="open"?"selected":""}>Open</option><option value="done" ${r.status==="done"?"selected":""}>Done</option></select></label></div>
     <label class="f">Work done or problem<textarea class="input" name="description" rows="3">${esc(r.description)}</textarea></label>
-    <div class="fg"><label class="f">Cost<input class="input" type="number" step="0.01" min="0" name="cost" value="${esc(r.cost)}"></label><label class="f">Done by<input class="input" name="vendor" value="${esc(r.vendor)}"></label></div>
+    <div class="fg"><label class="f">Cost<input class="input" type="number" step="0.01" min="0" name="cost" value="${esc(r.cost)}"></label>
+      <label class="f">Currency<select class="input" name="cost_currency"><option value="LKR" ${(r.cost_currency||"LKR")==="LKR"?"selected":""}>Rupees (LKR)</option><option value="USD" ${r.cost_currency==="USD"?"selected":""}>US dollars (USD)</option></select></label><label class="f">Done by<input class="input" name="vendor" value="${esc(r.vendor)}"></label></div>
     ${!id?`<label class="chk"><input type="checkbox" name="oos"><span>Take this item out of service until the record is done</span></label>`:""}</div>
     <div class="mf">${id&&isAdmin()?`<button type="button" class="btn danger" data-act="del-maint" data-id="${id}" data-confirm="Delete this record?">Delete</button><span style="flex:1"></span>`:""}<button type="button" class="btn" data-act="close-modal">Cancel</button><button class="btn primary">Save</button></div></form>`);}
 function noteForm(title,hint,formKey,data){openModal(`${mh(esc(title))}<form data-form="${formKey}" ${Object.entries(data).map(([k,v])=>`data-${k}="${esc(v)}"`).join(" ")}><div class="mb"><div>${esc(hint)}</div>
@@ -561,6 +573,9 @@ document.addEventListener("click",e=>{
     case"del-maint":St.remove("maintenance",id);closeModal();break;
     case"mfilter":UI.mFilter=t.dataset.v;break;
     case"export":download(`gear-${G.today()}.csv`,CSV.toCSV(CSV.exportRows()));return;
+    case"fetch-rate":{t.disabled=true;fetch("https://open.er-api.com/v6/latest/USD").then(r=>r.json()).then(j=>{const v=j&&j.rates&&j.rates.LKR;if(!v)throw new Error("no rate");
+        $("#usd-rate").value=Math.round(v*100)/100;$("#rate-date").value=G.today();$("#rate-source").value="Market rate (open.er-api.com)";toast(`1 USD = ${Math.round(v*100)/100} LKR. Press Save to use it.`,"ok");})
+      .catch(()=>toast("Couldn't fetch a rate. Enter the CBSL rate by hand.","bad")).finally(()=>{t.disabled=false;});return;}
     case"dl-template":download("gear-import-template.csv",CSV.toCSV(CSV.templateRows()));return;
     case"import":M.imp={opts:{update:true,dayFirst:true}};importModal();return;
     case"imp-run":{const jobs=CSV.run(M.imp.plan);jobs.forEach(f=>f());const s=CSV.summary(M.imp.plan);M.imp.step="done";M.imp.msg=`Added ${s.units}, updated ${s.updates}${s.errors?`, ${s.errors} rows with errors left out`:""}. ${S.mode==="live"?"They sync to the server in the background.":""}`;importModal();break;}
@@ -608,14 +623,15 @@ document.addEventListener("submit",e=>{const f=e.target;const k=f.dataset.form;i
   if(k==="kit"){if(!g("name")){$("#f-err").textContent="Name the kit.";return;}const d={name:g("name"),tag:g("tag").toUpperCase()||null,description:g("description"),item_ids:M.picker.ids.slice()};
     if(d.tag&&[...S.kits.values()].some(x=>x.id!==M.id&&x.tag===d.tag)){$("#f-err").textContent=`Tag ${d.tag} is already used.`;return;}
     if(M.id)St.patch("kits",M.id,d);else St.insert("kits",d);closeModal();toast("Kit saved","ok");}
-  if(k==="maint"){if(!g("item_id"))return;const d={item_id:g("item_id"),date:g("date")||G.today(),type:g("type"),status:g("status"),description:g("description"),cost:g("cost")===""?null:Number(g("cost")),vendor:g("vendor")};
+  if(k==="maint"){if(!g("item_id"))return;const d={item_id:g("item_id"),date:g("date")||G.today(),type:g("type"),status:g("status"),description:g("description"),cost:g("cost")===""?null:Number(g("cost")),cost_currency:g("cost_currency")==="USD"?"USD":"LKR",vendor:g("vendor")};
     if(M.id){const old=S.maintenance.get(M.id);St.patch("maintenance",M.id,d);if(old.status==="open"&&d.status==="done")G.finishMaint(Object.assign({},old,d));}
     else{const r=St.insert("maintenance",Object.assign({},d,{status:"open"}));if(d.status==="done")G.finishMaint(r);else if(fd.get("oos")==="on"){const it=G.item(d.item_id);if(it&&it.status==="available")St.patch("items",it.id,{status:"maintenance"});}}
     closeModal();toast("Saved","ok");}
   if(k==="wrap-dmg"){const l=lineById(f.dataset.id);const j=l&&S.jobs.get(l.job_id);if(l&&j)G.wrapMark(j,l,"damaged",g("note"));closeModal();toast("Marked damaged","bad");}
   if(k==="studio-dmg"){const l=lineById(f.dataset.id);const j=l&&S.jobs.get(l.job_id);if(l&&j)G.checkInLine(j,l,"damaged",g("note"));closeModal();toast("Repair record opened","bad");}
   if(k==="me"){St.renameMe(g("name"));toast("Saved","ok");}
-  if(k==="studio"){St.saveSettings({studio:g("studio"),currency:g("currency")}).then(r=>toast(r.ok?"Saved":"Couldn't save: "+r.message,r.ok?"ok":"bad"));}
+  if(k==="studio"){const rt=g("usd_rate");if(rt&&!(Number(rt)>0)){toast("The exchange rate must be a number above 0","bad");return;}
+    St.saveSettings({studio:g("studio"),currency:g("currency")==="USD"?"USD":"LKR",usd_rate:rt?Number(rt):null,rate_date:g("rate_date")||null,rate_source:g("rate_source")}).then(r=>toast(r.ok?"Saved":"Couldn't save: "+r.message,r.ok?"ok":"bad"));}
   if(k==="access"){St.saveSettings({allowed_domain:g("allowed_domain").replace(/^@/,"").toLowerCase()}).then(r=>toast(r.ok?"Saved":"Couldn't save: "+r.message,r.ok?"ok":"bad"));}
   render();
 });

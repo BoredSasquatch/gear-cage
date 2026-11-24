@@ -3,13 +3,13 @@
 "use strict";
 const G=window.GC, St=window.GCStore, S=St.S;
 const COLS=[["Tag","tag"],["Name","name"],["Brand","brand"],["Model","model"],["Category","category"],["Quantity","qty"],["Serial","serial"],["Room","room"],["Shelf","shelf"],
-  ["Is case","is_case"],["Home case","home_case"],["Status","status"],["Critical","critical"],["Purchase date","purchase_date"],["Purchase cost","purchase_cost"],["Replacement cost","replacement_cost"],
+  ["Is case","is_case"],["Home case","home_case"],["Status","status"],["Critical","critical"],["Purchase date","purchase_date"],["Purchase cost","purchase_cost"],["Replacement cost","replacement_cost"],["Currency","cost_currency"],
   ["Supplier","supplier"],["Service every (days)","service_days"],["Last serviced","last_serviced"],["Always goes out with","companions"],["Notes","notes"]];
 const ALIASES={assettag:"tag",tag:"tag",barcode:"tag",qr:"tag",name:"name",item:"name",itemname:"name",description:"name",brand:"brand",make:"brand",manufacturer:"brand",model:"model",category:"category",type:"category",
   quantity:"qty",qty:"qty",units:"qty",count:"qty",serial:"serial",serialnumber:"serial",sn:"serial",room:"room",location:"room",shelf:"shelf",shelforcase:"shelf",bin:"shelf",
   iscase:"is_case",case:"is_case",container:"is_case",homecase:"home_case",livesin:"home_case",storedin:"home_case",packedin:"home_case",
   status:"status",critical:"critical",purchasedate:"purchase_date",purchased:"purchase_date",datepurchased:"purchase_date",purchasecost:"purchase_cost",purchaseprice:"purchase_cost",cost:"purchase_cost",price:"purchase_cost",paid:"purchase_cost",
-  replacementcost:"replacement_cost",replacementvalue:"replacement_cost",replacement:"replacement_cost",supplier:"supplier",vendor:"supplier",serviceeverydays:"service_days",serviceevery:"service_days",serviceinterval:"service_days",servicedays:"service_days",
+  replacementcost:"replacement_cost",replacementvalue:"replacement_cost",replacement:"replacement_cost",currency:"cost_currency",cur:"cost_currency",pricecurrency:"cost_currency",costcurrency:"cost_currency",supplier:"supplier",vendor:"supplier",serviceeverydays:"service_days",serviceevery:"service_days",serviceinterval:"service_days",servicedays:"service_days",
   lastserviced:"last_serviced",lastservice:"last_serviced",alwaysgoesoutwith:"companions",goeswith:"companions",companions:"companions",accessories:"companions",notes:"notes",note:"notes",comments:"notes"};
 const STATUS_WORDS={instudio:"available",available:"available",instock:"available",ok:"available",inrepair:"maintenance",repair:"maintenance",maintenance:"maintenance",missing:"lost",lost:"lost",stolen:"lost",retired:"retired",sold:"retired",out:"out"};
 const cell=v=>{v=v==null?"":String(v);return/[",\n\r;]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;};
@@ -19,11 +19,11 @@ const yes=v=>/^(y|yes|true|1|x|critical|case)$/i.test(String(v||"").trim());
 
 function exportRows(){const tagOf=id=>{const x=G.item(id);return x?x.tag:"";};
   return [COLS.map(c=>c[0]),...G.items().sort(G.byTag).map(i=>COLS.map(([,k])=>k==="qty"?"":k==="status"?(G.STATUS[i.status]||G.STATUS.available)[0]:k==="critical"?(i.critical?"Yes":"No"):
-    k==="is_case"?(i.is_case?"Yes":"No"):k==="home_case"?tagOf(i.home_case_id):k==="companions"?(i.companions||[]).map(tagOf).filter(Boolean).join("; "):i[k]??""))];}
+    k==="is_case"?(i.is_case?"Yes":"No"):k==="cost_currency"?(i.cost_currency||"LKR"):k==="home_case"?tagOf(i.home_case_id):k==="companions"?(i.companions||[]).map(tagOf).filter(Boolean).join("; "):i[k]??""))];}
 function templateRows(){return [COLS.map(c=>c[0]),
-  ["CSE-0001","EXAMPLE: Pelican 1610 A-cam case","Pelican","1610","Case","1","","Cage A","Floor","Yes","","In studio","No","2024-03-12","389","419","","","","","Cases get their own QR label"],
-  ["","EXAMPLE: Sony FX6 body","Sony","ILME-FX6","Camera","1","EX5012345","Cage A","Shelf 1","No","CSE-0001","In studio","No","2024-03-12","5999","6299","B&H","365","2025-10-02","","Home case CSE-0001: lives in that Pelican"],
-  ["","EXAMPLE: SDI cable 3 ft","","","Cable","4","","Cage B","Cable drawer","No","","","Yes","2025-01-09","22","26","","","","","Quantity 4 makes four tagged cables. Delete the EXAMPLE rows before you import"]];}
+  ["CSE-0001","EXAMPLE: Pelican 1610 A-cam case","Pelican","1610","Case","1","","Cage A","Floor","Yes","","In studio","No","2024-03-12","389","419","USD","","","","","Cases get their own QR label"],
+  ["","EXAMPLE: Sony FX6 body","Sony","ILME-FX6","Camera","1","EX5012345","Cage A","Shelf 1","No","CSE-0001","In studio","No","2024-03-12","5999","6299","USD","B&H","365","2025-10-02","","Home case CSE-0001: lives in that Pelican"],
+  ["","EXAMPLE: SDI cable 3 ft","","","Cable","4","","Cage B","Cable drawer","No","","","Yes","2025-01-09","7500","8500","LKR","","","","","Quantity 4 makes four tagged cables. Delete the EXAMPLE rows before you import"]];}
 
 function parseCSV(t){t=String(t).replace(/^﻿/,"");const first=t.split(/\r?\n/,1)[0]||"";const cnt=c=>first.split(c).length-1;
   const d=[",",";","\t"].sort((a,b)=>cnt(b)-cnt(a))[0];const rows=[];let row=[],f="",q=false;
@@ -61,6 +61,9 @@ function plan(rows,opts){
     if(raw.category){const c=G.CATS.find(c=>[c[0].toLowerCase(),c[1].toLowerCase(),c[0].toLowerCase()+"s"].includes(raw.category.toLowerCase()));
       if(c)d.category=c[0];else{d.category="Accessory";e.warns.push(`Category "${raw.category}" isn't a known one, filed under Accessory`);}}
     if(raw.is_case)d.is_case=yes(raw.is_case);if(d.category==="Case"&&raw.is_case===undefined)d.is_case=true;
+    if(raw.cost_currency){const c=raw.cost_currency;if(/usd|\$|dollar/i.test(c))d.cost_currency="USD";else if(/lkr|rs|rupee/i.test(c))d.cost_currency="LKR";else e.warns.push(`Currency "${c}" not understood, using LKR`);}
+    else if(raw.purchase_cost&&/\$|usd/i.test(raw.purchase_cost))d.cost_currency="USD";
+    else if(raw.purchase_cost&&/rs|lkr/i.test(raw.purchase_cost))d.cost_currency="LKR";
     ["purchase_cost","replacement_cost"].forEach(k=>{if(!raw[k])return;const n=parseMoney(raw[k]);if(isNaN(n))e.errors.push(`"${raw[k]}" isn't a number`);else d[k]=n;});
     if(raw.service_days){const n=parseInt(raw.service_days,10);if(isNaN(n)||n<0)e.errors.push(`Service interval "${raw.service_days}" isn't a number of days`);else d.service_days=n;}
     ["purchase_date","last_serviced"].forEach(k=>{if(!raw[k])return;const v=parseDateCell(raw[k],opts.dayFirst);if(v)d[k]=v;else e.warns.push(`Date "${raw[k]}" not understood, left blank`);});

@@ -21,7 +21,10 @@ create table if not exists public.settings (
   -- Anyone signing in with an email at this domain becomes crew automatically. Others wait for an admin.
   allowed_domain text default '',
   -- The first person to sign in with this email becomes an admin.
-  owner_email text default ''
+  owner_email text default '',
+  usd_rate numeric,            -- rupees per 1 US dollar, used to show every price in one currency
+  rate_date date,
+  rate_source text default ''
 );
 insert into public.settings (id) values (1) on conflict (id) do nothing;
 
@@ -44,6 +47,7 @@ create table if not exists public.items (
   purchase_cost numeric,
   purchase_date date,
   replacement_cost numeric,
+  cost_currency text not null default 'LKR',   -- currency of purchase and replacement cost: LKR or USD
   supplier text default '',
   service_days int,
   last_serviced date,
@@ -124,6 +128,7 @@ create table if not exists public.maintenance (
   type text default 'Service',
   description text default '',
   cost numeric,
+  cost_currency text not null default 'LKR',
   vendor text default '',
   status text not null default 'open' check (status in ('open','done')),
   job_id uuid references public.jobs(id) on delete set null,

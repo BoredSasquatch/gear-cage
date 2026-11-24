@@ -12,7 +12,16 @@ const LEAVE_REASONS=["Not needed on this job","Unavailable","Packed separately",
 
 /* ---------- small helpers ---------- */
 const num=v=>(v===null||v===undefined||v===""||isNaN(Number(v)))?0:Number(v);
-const repl=i=>i?(i.replacement_cost!=null&&i.replacement_cost!==""?num(i.replacement_cost):num(i.purchase_cost)):0;
+/* Money: each item stores prices in the currency paid (LKR or USD). Totals are shown in the display currency
+   (settings.currency), converted with settings.usd_rate (rupees per US dollar). */
+const dispCur=()=>S.settings.currency==="USD"?"USD":"LKR";
+const rate=()=>num(S.settings.usd_rate);
+function needsRate(){const d=dispCur();return !rate()&&(items().some(i=>(i.cost_currency||"LKR")!==d&&(num(i.purchase_cost)||num(i.replacement_cost)))||[...S.maintenance.values()].some(r=>(r.cost_currency||"LKR")!==d&&num(r.cost)));}
+function toDisp(v,cur){v=num(v);if(!v)return 0;const d=dispCur();cur=cur==="USD"?"USD":"LKR";if(cur===d)return v;const r=rate();if(!r)return 0;
+  return cur==="USD"?v*r:v/r;}
+const repl=i=>i?toDisp(i.replacement_cost!=null&&i.replacement_cost!==""?i.replacement_cost:i.purchase_cost,i.cost_currency):0;
+const buy=i=>i?toDisp(i.purchase_cost,i.cost_currency):0;
+const mcost=r=>r?toDisp(r.cost,r.cost_currency):0;
 const sum=(a,f)=>a.reduce((t,x)=>t+f(x),0);
 const iso=d=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
 const today=()=>iso(new Date());
@@ -191,7 +200,7 @@ function serviceDue(){const r=[];items().forEach(i=>{if(!num(i.service_days)||i.
   const last=i.last_serviced||i.purchase_date;const due=last?addDays(last,num(i.service_days)):today();const left=diffDays(today(),due);
   if(left<=14)r.push({item:i,due,left});});return r.sort((a,b)=>a.left-b.left);}
 
-window.GC={CATS,PREFIX,STATUS,JOB_STATUS,LEAVE_REASONS,SERVICE_TYPES,num,repl,sum,iso,today,parseD,diffDays,addDays,byTag,items,item,person,personName,
+window.GC={CATS,PREFIX,STATUS,JOB_STATUS,LEAVE_REASONS,SERVICE_TYPES,num,repl,buy,mcost,toDisp,dispCur,rate,needsRate,sum,iso,today,parseD,diffDays,addDays,byTag,items,item,person,personName,
   linesOf,lineFor,caseContents,packedIn,activeJobs,jobHolding,cleanCode,findCode,searchItems,nextTag,nextKitTag,whereIs,clashesFor,issueFor,overlaps,
   addLine,addKit,removeKit,removeLine,pullScan,pullSummary,confirmOut,wrapScan,wrapMark,wrapSummary,finishWrap,studioScan,checkInLine,undoCheckIn,studioSummary,closeJob,
   finishMaint,serviceDue};
