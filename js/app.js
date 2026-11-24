@@ -23,6 +23,11 @@ const chip=(txt,k)=>`<span class="chip ${k||""}">${esc(txt)}</span>`;
 const statusChip=s=>{const x=G.STATUS[s]||G.STATUS.available;return chip(x[0],x[1]);};
 const jobChip=j=>{const x=G.JOB_STATUS[j.status]||["",""];return chip(isOverdue(j)?`${G.diffDays(j.due_on,G.today())}d overdue`:x[0],isOverdue(j)?"bad":x[1]);};
 const tagHTML=i=>i?`<span class="tag ${i.is_case?"case":""}">${esc(i.tag)}</span>`:"";
+/* Equipment photos: a small square thumbnail beside the item wherever it's listed; tap for the full photo. */
+const photoUrl=(i,thumb)=>St.photoUrl(i,thumb);
+function thumbHTML(i,placeholder){if(!i)return"";
+  if(i.photo_path)return `<img class="thumb" src="${esc(photoUrl(i,true))}" alt="" loading="lazy" data-act="photo" data-id="${i.id}">`;
+  return placeholder?`<span class="thumb ph" aria-hidden="true">${IC.cam}</span>`:"";}
 const isOverdue=j=>(j.status==="out"||j.status==="wrapped")&&j.due_on&&G.diffDays(j.due_on,G.today())>0;
 const canWrite=()=>S.me&&(S.me.role==="admin"||S.me.role==="crew");
 const isAdmin=()=>S.me&&S.me.role==="admin";
@@ -216,7 +221,7 @@ function pullLine(j,l){const i=l.it;const left=l.state==="left";const issue=!lef
   const pulled=l.state==="pulled";
   return `<div class="line ${left?"left":pulled?"done":""} ${issue?"prob":""}">
     <button class="tick" data-write data-act="pull-tick" data-id="${l.id}" aria-pressed="${pulled}" aria-label="Pulled ${esc(i.name)}" ${left?"disabled":""}>${CHECK}</button>
-    <div class="grow"><div class="t">${tagHTML(i)}<b>${esc(i.name)}</b>${i.critical?`<span class="crit">Critical</span>`:""}</div>
+    ${thumbHTML(i)}<div class="grow"><div class="t">${tagHTML(i)}<b>${esc(i.name)}</b>${i.critical?`<span class="crit">Critical</span>`:""}</div>
       <div class="small muted">${itemMeta(i,l)}</div>
       ${issue?`<div class="warnline"><b>${esc(issue)}.</b>${swaps.length?`<select class="input" style="width:auto;min-height:36px" data-swap="${l.id}" aria-label="Swap for"><option value="">Swap for…</option>${swaps.map(s=>`<option value="${s.id}">${esc(s.tag)} · ${esc(s.name)}</option>`).join("")}</select>`:"No spare available."}</div>`:""}
       ${clashes.length?`<div class="small" style="color:var(--warn)">Also booked on ${clashes.map(o=>`${esc(o.name)} (${fmtDate(o.starts_on)})`).join(", ")}</div>`:""}
@@ -247,7 +252,7 @@ function wrapView(j){
     <button class="btn small" data-act="skip-wrap" data-id="${j.id}">Skip to studio check-in</button></div></div>`;}
 function wrapLine(j,l){const i=l.it;const wrongHome=l.state==="packed"&&i.home_case_id&&i.home_case_id!==l.packed_case_id?G.item(i.home_case_id):null;
   return `<div class="line ${l.state==="out"?"":l.state==="damaged"||l.state==="missing"?"prob":"done"}">
-    <div class="grow"><div class="t">${tagHTML(i)}<b>${esc(i.name)}</b>${i.critical?`<span class="crit">Critical</span>`:""}</div>
+    ${thumbHTML(i)}<div class="grow"><div class="t">${tagHTML(i)}<b>${esc(i.name)}</b>${i.critical?`<span class="crit">Critical</span>`:""}</div>
       <div class="small muted">${i.home_case_id&&l.state==="out"?"Lives in "+esc((G.item(i.home_case_id)||{}).tag||""):itemMeta(i,l)}${l.wrap_by?" · "+esc(G.personName(l.wrap_by))+" "+fmtWhen(l.wrap_at):""}${l.note?" · "+esc(l.note):""}</div>
       ${wrongHome?`<div class="warnline">Normally lives in ${esc(wrongHome.tag)} ${esc(wrongHome.name)}</div>`:""}</div>
     <div class="acts" data-write>${l.state==="out"?(i.is_case?`<button class="btn small" data-act="wrap-case" data-jid="${j.id}" data-id="${i.id}">Pack into this</button>`:"")+
@@ -270,7 +275,7 @@ function studioView(j){
 function studioLine(j,l){const i=l.it;const back=!!l.back_at;const st=l.state;const conf=st==="missing"&&l.back_by;
   return `<div class="line ${back&&st==="returned"?"done":(st==="damaged"||st==="missing")?"prob":""}">
     <button class="tick" data-write data-act="studio-back" data-id="${l.id}" aria-pressed="${back}" aria-label="Back in ${esc(i.name)}">${CHECK}</button>
-    <div class="grow"><div class="t">${tagHTML(i)}<b>${esc(i.name)}</b>${i.critical?`<span class="crit">Critical</span>`:""}${st==="damaged"?chip("Damaged","warn"):""}${st==="missing"?chip(conf?"Missing":"Missing at wrap","bad"):""}</div>
+    ${thumbHTML(i)}<div class="grow"><div class="t">${tagHTML(i)}<b>${esc(i.name)}</b>${i.critical?`<span class="crit">Critical</span>`:""}${st==="damaged"?chip("Damaged","warn"):""}${st==="missing"?chip(conf?"Missing":"Missing at wrap","bad"):""}</div>
       <div class="small muted">${back?"Back "+fmtWhen(l.back_at)+(l.back_by?" · "+esc(G.personName(l.back_by)):""):esc([i.room,i.shelf].filter(Boolean).join(" · ")||"")}${l.note?" · "+esc(l.note):""}${st==="missing"?" · replace for "+money(G.repl(i)):""}</div></div>
     <div class="acts" data-write>${back||conf?`<button class="btn small" data-act="studio-undo" data-id="${l.id}">Undo</button>`:
       `<button class="btn small" data-act="studio-dmg" data-id="${l.id}">Damaged</button><button class="btn small danger" data-act="studio-miss" data-id="${l.id}">Missing</button>`}</div></div>`;}
@@ -281,7 +286,7 @@ function doneView(j){const ls=G.linesOf(j.id).filter(l=>l.state!=="left");const 
 /* ---------- gear ---------- */
 function vGear(){
   const q=val("gear-q");const toks=q.toLowerCase().split(/\s+/).filter(Boolean);
-  let rows=G.items().filter(i=>(!UI.gearCat||(UI.gearCat==="__cases"?i.is_case:i.category===UI.gearCat))&&(!UI.gearStatus||i.status===UI.gearStatus)&&
+  let rows=G.items().filter(i=>(!UI.gearCat||(UI.gearCat==="__cases"?i.is_case:i.category===UI.gearCat))&&(!UI.gearStatus||(UI.gearStatus==="__nophoto"?!i.photo_path:i.status===UI.gearStatus))&&
     (!toks.length||toks.every(t=>[i.tag,i.name,i.brand,i.model,i.serial,i.room,i.shelf].join(" ").toLowerCase().includes(t)))).sort(G.byTag);
   const live=G.items().filter(i=>i.status!=="retired");
   return `<div class="head"><div class="sp"><span class="eyebrow">Gear · ${live.length} items</span><h1>Everything in the cage</h1></div>
@@ -291,8 +296,8 @@ function vGear(){
     <div class="kpi"><span class="eyebrow">Showing</span><span class="v">${rows.length}</span><span class="s">${money(G.sum(rows,G.repl))}</span></div></div>
   <div class="toolbar"><input class="input" id="gear-q" data-keep placeholder="Search tag, name, serial, shelf" value="${esc(q)}" aria-label="Search gear">
     <select class="input" data-ui="gearCat" aria-label="Category" style="flex:0 1 170px"><option value="">All categories</option><option value="__cases" ${UI.gearCat==="__cases"?"selected":""}>Cases only</option>${G.CATS.map(c=>`<option ${UI.gearCat===c[0]?"selected":""}>${c[0]}</option>`).join("")}</select>
-    <select class="input" data-ui="gearStatus" aria-label="Status" style="flex:0 1 150px"><option value="">Any status</option>${Object.entries(G.STATUS).map(([k,v])=>`<option value="${k}" ${UI.gearStatus===k?"selected":""}>${v[0]}</option>`).join("")}</select></div>
-  <div class="panel">${rows.length?rows.slice(0,400).map(i=>{const w=G.whereIs(i);return `<div class="row click" data-act="item" data-id="${i.id}">${tagHTML(i)}<div class="grow"><b>${esc(i.name)}</b>${i.critical?` <span class="crit">Critical</span>`:""}
+    <select class="input" data-ui="gearStatus" aria-label="Status" style="flex:0 1 150px"><option value="">Any status</option>${Object.entries(G.STATUS).map(([k,v])=>`<option value="${k}" ${UI.gearStatus===k?"selected":""}>${v[0]}</option>`).join("")}<option value="__nophoto" ${UI.gearStatus==="__nophoto"?"selected":""}>No photo yet (${G.items().filter(i=>!i.photo_path).length})</option></select></div>
+  <div class="panel">${rows.length?rows.slice(0,400).map(i=>{const w=G.whereIs(i);return `<div class="row click" data-act="item" data-id="${i.id}">${thumbHTML(i,true)}<div class="grow" style="display:grid;gap:2px"><div class="t" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${tagHTML(i)}<b>${esc(i.name)}</b>${i.critical?`<span class="crit">Critical</span>`:""}</div>
       <div class="small muted">${esc(w.text)}</div></div><div style="display:grid;justify-items:end;gap:3px">${statusChip(i.status)}<span class="small num muted">${money(G.repl(i))}</span></div></div>`;}).join("")
     :`<div class="empty">${G.items().length?"Nothing matches.":"No gear yet."}</div>`}</div>`;}
 let histCache={};
@@ -308,6 +313,9 @@ function vItem(){
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">${tagHTML(i)}${statusChip(i.status)}${i.critical?`<span class="crit">Critical</span>`:""}${i.example?chip("Example"):""}</div></div>
     <button class="btn" data-act="print-one" data-id="${i.id}">Print label</button><button class="btn primary" data-write data-act="edit-item" data-id="${i.id}">Edit</button></div>
   <div class="stack">
+  <div class="photo-row"><div class="photo-big">${i.photo_path?`<img src="${esc(photoUrl(i,false))}" alt="Photo of ${esc(i.name)}" data-act="photo" data-id="${i.id}">`:`<div class="photo-empty">${IC.cam}<span>No photo yet</span></div>`}
+      <div class="photo-acts" data-write><button class="btn small" data-act="photo-add" data-id="${i.id}">${i.photo_path?"Replace photo":"Add photo"}</button>${i.photo_path?`<button class="btn small danger" data-act="photo-rm" data-id="${i.id}" data-confirm="Remove photo?">Remove</button>`:""}</div></div>
+    <div class="photo-qr"><div class="qr">${window.qrcode?window.GCLabels.qrSVG("GC:"+i.tag):""}</div><span class="tag ${i.is_case?"case":""}">${esc(i.tag)}</span><span class="small muted">Scan to find this item</span></div></div>
   <div class="where">${chip("Where",w.kind)}<b>${esc(w.text)}</b></div>
   ${i.is_case?`<div class="grid2"><div class="panel"><div class="ptitle"><h2>Lives in this case</h2><span class="small muted">Fixed contents</span></div>${list(G.caseContents(i.id))||`<div class="empty">No fixed contents. Set an item's home case to this case to add it.</div>`}</div>
     <div class="panel"><div class="ptitle"><h2>Packed in it now</h2></div>${list(G.packedIn(i.id))||`<div class="empty">Empty.</div>`}</div></div>`:""}
@@ -336,7 +344,11 @@ function vKits(){const kits=[...S.kits.values()].sort((a,b)=>a.name.localeCompar
   :`<div class="panel empty">Kits are gear that travels together, like an A-camera build. Add cases to a kit and everything that lives in them comes along.</div>`}`;}
 
 /* ---------- maintenance ---------- */
-function vMaint(){const recs=[...S.maintenance.values()].sort((a,b)=>String(b.date).localeCompare(String(a.date)));const shown=recs.filter(r=>UI.mFilter==="all"||r.status===UI.mFilter);const due=G.serviceDue();
+function vMaint(){const recs=[...S.maintenance.values()].sort((a,b)=>String(b.date).localeCompare(String(a.date)));
+  const q=val("maint-q");const toks=q.toLowerCase().split(/\s+/).filter(Boolean);
+  const hay=r=>{const i=G.item(r.item_id)||{};return [i.tag,i.name,i.brand,i.serial,r.type,r.description,r.vendor].join(" ").toLowerCase();};
+  const shown=recs.filter(r=>(toks.length?true:(UI.mFilter==="all"||r.status===UI.mFilter))&&(!toks.length||toks.every(t=>hay(r).includes(t))));
+  const gearHits=toks.length?G.searchItems(q,6):[];const due=G.serviceDue();
   const yr=String(new Date().getFullYear());
   return `<div class="head"><div class="sp"><span class="eyebrow">Maintenance</span><h1>Service and repairs</h1></div><button class="btn primary" data-write data-act="add-maint">Log</button></div>
   <div class="kpis"><div class="kpi"><span class="eyebrow">Open</span><span class="v">${recs.filter(r=>r.status==="open").length}</span><span class="s">Repairs and services</span></div>
@@ -344,9 +356,14 @@ function vMaint(){const recs=[...S.maintenance.values()].sort((a,b)=>String(b.da
     <div class="kpi"><span class="eyebrow">Spent in ${yr}</span><span class="v">${money(G.sum(recs.filter(r=>String(r.date).startsWith(yr)),G.mcost))}</span><span class="s">${money(G.sum(recs,G.mcost))} all time</span></div></div>
   ${due.length?`<div class="panel" style="margin-bottom:14px"><div class="ptitle"><h2>Service schedule</h2></div>${due.map(d=>`<div class="row">${tagHTML(d.item)}<div class="grow"><b>${esc(d.item.name)}</b><div class="small muted">Every ${d.item.service_days} days · last ${fmtDate(d.item.last_serviced||d.item.purchase_date)}</div></div>
     ${chip(d.left<0?-d.left+"d overdue":d.left===0?"Due today":"Due "+fmtDate(d.due),d.left<0?"bad":d.left===0?"warn":"")}<button class="btn small" data-write data-act="add-maint" data-item="${d.item.id}" data-type="Service">Log</button></div>`).join("")}</div>`:""}
-  <div class="panel"><div class="ptitle"><h2>Log</h2><div class="seg">${[["open","Open"],["done","Done"],["all","All"]].map(o=>`<button class="${UI.mFilter===o[0]?"on":""}" data-act="mfilter" data-v="${o[0]}">${o[1]}</button>`).join("")}</div></div>
-    ${shown.map(r=>{const i=G.item(r.item_id);return `<div class="row click" data-act="edit-maint" data-id="${r.id}">${tagHTML(i)}<div class="grow"><b>${esc(i?i.name:"Deleted item")}</b><div class="small muted">${fmtDate(r.date)} · ${esc(r.type)} · ${esc(r.description)}</div></div>
-      <span class="num small">${money(G.mcost(r))}</span>${r.status==="open"?`<button class="btn small" data-write data-act="done-maint" data-id="${r.id}">Done</button>`:chip("Done","ok")}</div>`;}).join("")||`<div class="empty">${UI.mFilter==="open"?"No open maintenance.":"Nothing logged yet."}</div>`}</div>`;}
+  <div class="toolbar"><input class="input" id="maint-q" data-keep placeholder="Search gear or records: tag, name, serial, repair notes" value="${esc(q)}" aria-label="Search gear or maintenance records">
+    ${q?`<button class="btn small" data-act="maint-clear">Clear</button>`:""}</div>
+  ${gearHits.length?`<div class="panel" style="margin-bottom:14px"><div class="ptitle"><h2>Gear</h2><span class="small muted">Tap Log to add a service or repair</span></div>${gearHits.map(i=>{const n=recs.filter(r=>r.item_id===i.id).length;
+    return `<div class="row">${thumbHTML(i,true)}${tagHTML(i)}<div class="grow click" data-act="item" data-id="${i.id}"><b>${esc(i.name)}</b><div class="small muted">${n?n+" record"+(n>1?"s":""):"No records yet"} · ${esc(G.whereIs(i).text)}</div></div>
+      <button class="btn small primary" data-write data-act="add-maint" data-item="${i.id}">Log</button></div>`;}).join("")}</div>`:""}
+  <div class="panel"><div class="ptitle"><h2>${toks.length?"Matching records":"Log"}</h2>${toks.length?`<span class="small muted">${shown.length} found</span>`:`<div class="seg">${[["open","Open"],["done","Done"],["all","All"]].map(o=>`<button class="${UI.mFilter===o[0]?"on":""}" data-act="mfilter" data-v="${o[0]}">${o[1]}</button>`).join("")}</div>`}</div>
+    ${shown.map(r=>{const i=G.item(r.item_id);return `<div class="row click" data-act="edit-maint" data-id="${r.id}">${thumbHTML(i)}${tagHTML(i)}<div class="grow"><b>${esc(i?i.name:"Deleted item")}</b><div class="small muted">${fmtDate(r.date)} · ${esc(r.type)} · ${esc(r.description)}</div></div>
+      <span class="num small">${money(G.mcost(r))}</span>${r.status==="open"?`<button class="btn small" data-write data-act="done-maint" data-id="${r.id}">Done</button>`:chip("Done","ok")}</div>`;}).join("")||`<div class="empty">${toks.length?"No records match. Use Log next to a gear result to add one.":UI.mFilter==="open"?"No open maintenance.":"Nothing logged yet."}</div>`}</div>`;}
 
 /* ---------- labels ---------- */
 function labelPool(){const f=UI.labelFilter;const q=val("label-q").toLowerCase();
@@ -362,6 +379,21 @@ function vLabels(){const pool=labelPool();const sel=G.items().filter(i=>UI.label
     <button class="btn small" data-act="label-all">Select all ${pool.length}</button><button class="btn small" data-act="label-none">Clear</button></div>
   <div class="panel">${pool.slice(0,500).map(i=>`<label class="row click" style="cursor:pointer"><input type="checkbox" data-label="${i.id}" ${UI.labelSel.has(i.id)?"checked":""} style="width:20px;height:20px">${tagHTML(i)}<div class="grow">${esc(i.name)}<div class="small muted">${esc([i.room,i.shelf].filter(Boolean).join(" · "))}</div></div></label>`).join("")||`<div class="empty">No gear matches.</div>`}</div>
   ${sel.length?`<h2 style="margin:18px 0 8px">Preview, first sheet</h2><div class="lbl-preview" id="lbl-prev"></div>`:""}`;}
+/* photos: read the picked image, make a 1600 px photo and a 320 px square thumbnail, then upload both */
+async function loadImage(file){
+  if(window.createImageBitmap){try{return await createImageBitmap(file,{imageOrientation:"from-image"});}catch(e){}}
+  return await new Promise((res,rej)=>{const img=new Image();img.onload=()=>res(img);img.onerror=()=>rej(new Error("This browser can't read that file. Use a JPEG or PNG photo."));img.src=URL.createObjectURL(file);});}
+function drawTo(img,max,square){const w=img.width,h=img.height;let sx=0,sy=0,sw=w,sh=h;if(square){const s=Math.min(w,h);sx=(w-s)/2;sy=(h-s)/2;sw=sh=s;}
+  const k=Math.min(1,max/Math.max(sw,sh));const c=document.createElement("canvas");c.width=Math.round(sw*k);c.height=Math.round(sh*k);
+  const ctx=c.getContext("2d");ctx.fillStyle="#fff";ctx.fillRect(0,0,c.width,c.height);ctx.drawImage(img,sx,sy,sw,sh,0,0,c.width,c.height);return c;}
+const toBlob=(c,q)=>new Promise((res,rej)=>c.toBlob(b=>b?res(b):rej(new Error("Couldn't process that photo")),"image/jpeg",q));
+async function addPhoto(id,file){const i=G.item(id);if(!i)return;
+  if(S.mode==="live"&&!navigator.onLine){toast("Adding a photo needs a connection. Try again when you're online.","bad");return;}
+  if(!/^image\//.test(file.type||"image/")){toast("That isn't a photo. Choose a JPEG or PNG.","bad");return;}
+  toast("Saving photo…");
+  try{const img=await loadImage(file);const full=await toBlob(drawTo(img,1600,false),0.82);const thumb=await toBlob(drawTo(img,320,true),0.8);
+    const r=await St.uploadPhoto(i,full,thumb);toast(r.ok?`Photo saved for ${i.tag}`:"Couldn't save the photo: "+r.message,r.ok?"ok":"bad");}
+  catch(e){toast(e.message||"Couldn't read that photo","bad");}}
 function printLabels(list){const html=window.GCLabels.sheetHTML(list,UI.labelLayout,UI.labelSkip);$("#print-area").innerHTML=html;setTimeout(()=>window.print(),80);}
 function fillPreview(){const el=$("#lbl-prev");if(!el)return;const sel=G.items().filter(i=>UI.labelSel.has(i.id)).sort(G.byTag);const L=window.GCLabels.LAYOUTS[UI.labelLayout];
   el.innerHTML=window.GCLabels.sheetHTML(sel.slice(0,Math.max(1,L.cols*L.rows-UI.labelSkip)),UI.labelLayout,UI.labelSkip);
@@ -456,9 +488,19 @@ function kitForm(id){const k=id?S.kits.get(id):{name:"",tag:G.nextKitTag(),descr
     <label class="f">What it's for<input class="input" name="description" value="${esc(k.description)}"></label>
     <div style="display:grid;gap:6px"><span class="eyebrow">Contents</span><span class="hint">Add cases to bring everything that lives in them. Each item's "always goes out with" gear comes too.</span><div id="picker">${pickerHTML()}</div></div><div class="small" id="f-err" style="color:var(--bad)"></div></div>
     <div class="mf">${id&&isAdmin()?`<button type="button" class="btn danger" data-act="del-kit" data-id="${id}" data-confirm="Delete this kit?">Delete</button><span style="flex:1"></span>`:""}<button type="button" class="btn" data-act="close-modal">Cancel</button><button class="btn primary">Save kit</button></div></form>`);}
+/* Item picker for maintenance: type a tag, name or serial (or scan a label into the box), then tap the match. */
+function mpickHTML(){const p=M.mpick;const sel=p.id&&G.item(p.id);
+  if(sel)return `<div class="row" style="border:1px solid var(--line);border-radius:12px">${thumbHTML(sel,true)}${tagHTML(sel)}<div class="grow"><b>${esc(sel.name)}</b><div class="small muted">${esc(G.whereIs(sel).text)}</div></div>
+    <button type="button" class="btn small" data-act="mpick-clear">Change</button><input type="hidden" name="item_id" value="${sel.id}"></div>`;
+  const exact=p.q&&G.findCode(p.q);const res=exact&&exact.type==="item"?[exact.obj]:p.q?G.searchItems(p.q,8):[];
+  return `<div class="scanbar"><input class="input" id="mpick-q" placeholder="Search tag, name or serial, or scan a label" value="${esc(p.q)}" aria-label="Find the gear" autocomplete="off" style="font-size:15px;border-width:1px">
+    ${res.length?`<div class="sugg">${res.map(i=>`<button type="button" data-act="mpick" data-id="${i.id}">${thumbHTML(i)}${tagHTML(i)}<span>${esc(i.name)}</span></button>`).join("")}</div>`:p.q?`<div class="sugg"><div class="empty small">No gear matches "${esc(p.q)}"</div></div>`:""}</div>`;}
+function rerenderMpick(){const el=$("#mpick");if(!el)return;const had=document.activeElement&&document.activeElement.id==="mpick-q";el.innerHTML=mpickHTML();
+  if(had){const i=$("#mpick-q");if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length);}}}
 function maintForm(id,itemId,type){const r=id?S.maintenance.get(id):{item_id:itemId||"",date:G.today(),type:type||"Service",description:"",cost:null,vendor:"",status:type==="Service"?"done":"open"};M.id=id||null;
-  openModal(`${mh(id?"Maintenance record":"Log maintenance")}<form data-form="maint"><div class="mb">
-    <label class="f">Item<select class="input" name="item_id" required><option value="">Choose gear…</option>${G.items().sort(G.byTag).map(i=>`<option value="${i.id}" ${i.id===r.item_id?"selected":""}>${esc(i.tag)} · ${esc(i.name)}</option>`).join("")}</select></label>
+  M.mpick={id:r.item_id||"",q:""};
+  openModal(`${mh(id?"Maintenance record":"Log maintenance")}<form data-form="maint" autocomplete="off"><div class="mb">
+    <div style="display:grid;gap:5px"><span class="small" style="font-weight:600;color:var(--ink-2)">Item</span><div id="mpick">${mpickHTML()}</div></div>
     <div class="fg"><label class="f">Date<input class="input" type="date" name="date" value="${esc(r.date)}"></label><label class="f">Type<select class="input" name="type">${["Service","Repair","Cleaning","Sensor clean","Firmware","Calibration","Inspection"].map(t=>`<option ${t===r.type?"selected":""}>${t}</option>`).join("")}</select></label>
       <label class="f">Status<select class="input" name="status"><option value="open" ${r.status==="open"?"selected":""}>Open</option><option value="done" ${r.status==="done"?"selected":""}>Done</option></select></label></div>
     <label class="f">Work done or problem<textarea class="input" name="description" rows="3">${esc(r.description)}</textarea></label>
@@ -572,6 +614,15 @@ document.addEventListener("click",e=>{
     case"done-maint":{e.stopPropagation();const r=S.maintenance.get(id);if(r){const back=G.finishMaint(r);toast(back?"Done. Back in stock.":"Marked done","ok");}break;}
     case"del-maint":St.remove("maintenance",id);closeModal();break;
     case"mfilter":UI.mFilter=t.dataset.v;break;
+    case"maint-clear":UI.inputs["maint-q"]="";break;
+    case"mpick":if(M.mpick){M.mpick.id=id;M.mpick.q="";rerenderMpick();}return;
+    case"mpick-clear":if(M.mpick){M.mpick.id="";rerenderMpick();const el=$("#mpick-q");if(el)el.focus();}return;
+    case"photo":{e.stopPropagation();const i=G.item(id);if(!i||!i.photo_path)return;
+      openModal(`${mh(esc(i.tag)+" · "+esc(i.name))}<div class="mb"><img class="photo-full" src="${esc(photoUrl(i,false))}" alt="Photo of ${esc(i.name)}">
+        <div class="small muted">${esc(G.whereIs(i).text)}</div></div><div class="mf"><button class="btn" data-act="item" data-id="${i.id}">Open item</button><button class="btn primary" data-act="close-modal">Close</button></div>`);return;}
+    case"photo-add":{const inp=document.createElement("input");inp.type="file";inp.accept="image/*";inp.style.display="none";document.body.appendChild(inp);
+      inp.addEventListener("change",()=>{const f=inp.files&&inp.files[0];inp.remove();if(f)addPhoto(id,f);});inp.click();return;}
+    case"photo-rm":{St.removePhoto(G.item(id)).then(r=>toast(r.ok?"Photo removed":"Couldn't remove the photo: "+r.message,r.ok?"ok":"bad"));return;}
     case"export":download(`gear-${G.today()}.csv`,CSV.toCSV(CSV.exportRows()));return;
     case"fetch-rate":{t.disabled=true;fetch("https://open.er-api.com/v6/latest/USD").then(r=>r.json()).then(j=>{const v=j&&j.rates&&j.rates.LKR;if(!v)throw new Error("no rate");
         $("#usd-rate").value=Math.round(v*100)/100;$("#rate-date").value=G.today();$("#rate-source").value="Market rate (open.er-api.com)";toast(`1 USD = ${Math.round(v*100)/100} LKR. Press Save to use it.`,"ok");})
@@ -593,6 +644,7 @@ document.addEventListener("click",e=>{if(e.target.id==="modal")closeModal();});
 document.addEventListener("keydown",e=>{if(e.key==="Escape"){if(!$("#scanner").hidden)stopScanner();else if(!$("#modal").hidden)closeModal();}});
 document.addEventListener("input",e=>{const t=e.target;
   if(t.id==="pick-q"){M.picker.q=t.value;rerenderPicker();return;}
+  if(t.id==="mpick-q"&&M.mpick){M.mpick.q=t.value;rerenderMpick();return;}
   if(t.id==="label-skip"){UI.labelSkip=Math.max(0,parseInt(t.value,10)||0);fillPreviewSoon();return;}
   if(t.hasAttribute("data-keep")){UI.inputs[t.id]=t.value;render();}});
 let pv=0;function fillPreviewSoon(){clearTimeout(pv);pv=setTimeout(fillPreview,150);}
@@ -623,7 +675,9 @@ document.addEventListener("submit",e=>{const f=e.target;const k=f.dataset.form;i
   if(k==="kit"){if(!g("name")){$("#f-err").textContent="Name the kit.";return;}const d={name:g("name"),tag:g("tag").toUpperCase()||null,description:g("description"),item_ids:M.picker.ids.slice()};
     if(d.tag&&[...S.kits.values()].some(x=>x.id!==M.id&&x.tag===d.tag)){$("#f-err").textContent=`Tag ${d.tag} is already used.`;return;}
     if(M.id)St.patch("kits",M.id,d);else St.insert("kits",d);closeModal();toast("Kit saved","ok");}
-  if(k==="maint"){if(!g("item_id"))return;const d={item_id:g("item_id"),date:g("date")||G.today(),type:g("type"),status:g("status"),description:g("description"),cost:g("cost")===""?null:Number(g("cost")),cost_currency:g("cost_currency")==="USD"?"USD":"LKR",vendor:g("vendor")};
+  if(k==="maint"){if(!g("item_id")){ // Enter in the search box (or a USB scanner) picks the match instead of saving
+      const p=M.mpick;const f2=p&&p.q&&G.findCode(p.q);const hits=p&&p.q?G.searchItems(p.q,2):[];
+      if(f2&&f2.type==="item"){p.id=f2.obj.id;rerenderMpick();}else if(hits.length===1){p.id=hits[0].id;rerenderMpick();}else toast("Choose the gear this record is for","bad");return;}const d={item_id:g("item_id"),date:g("date")||G.today(),type:g("type"),status:g("status"),description:g("description"),cost:g("cost")===""?null:Number(g("cost")),cost_currency:g("cost_currency")==="USD"?"USD":"LKR",vendor:g("vendor")};
     if(M.id){const old=S.maintenance.get(M.id);St.patch("maintenance",M.id,d);if(old.status==="open"&&d.status==="done")G.finishMaint(Object.assign({},old,d));}
     else{const r=St.insert("maintenance",Object.assign({},d,{status:"open"}));if(d.status==="done")G.finishMaint(r);else if(fd.get("oos")==="on"){const it=G.item(d.item_id);if(it&&it.status==="available")St.patch("items",it.id,{status:"maintenance"});}}
     closeModal();toast("Saved","ok");}

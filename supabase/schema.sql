@@ -213,3 +213,22 @@ drop policy if exists e_read on public.events;
 create policy e_read on public.events for select using (public.is_member());
 drop policy if exists e_ins on public.events;
 create policy e_ins on public.events for insert with check (public.is_member() and by = auth.uid());
+
+-- ---------- equipment photos (same as migration-003-photos.sql) ----------
+alter table public.items add column if not exists photo_path text;   -- e.g. "<item id>/photo" (photo.jpg and photo-t.jpg)
+alter table public.items add column if not exists photo_v bigint;    -- changes when a photo is replaced, so phones fetch the new one
+
+-- Storage for photos. Photos can be viewed by anyone who has a photo's exact web address
+-- (addresses contain random item IDs, so they can't be guessed). Only signed-in crew can add, replace or remove them.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('item-photos', 'item-photos', true, 5242880, array['image/jpeg','image/png','image/webp'])
+on conflict (id) do nothing;
+
+drop policy if exists "gear cage photos read" on storage.objects;
+create policy "gear cage photos read" on storage.objects for select using (bucket_id = 'item-photos' and public.is_member());
+drop policy if exists "gear cage photos add" on storage.objects;
+create policy "gear cage photos add" on storage.objects for insert with check (bucket_id = 'item-photos' and public.is_member());
+drop policy if exists "gear cage photos replace" on storage.objects;
+create policy "gear cage photos replace" on storage.objects for update using (bucket_id = 'item-photos' and public.is_member());
+drop policy if exists "gear cage photos remove" on storage.objects;
+create policy "gear cage photos remove" on storage.objects for delete using (bucket_id = 'item-photos' and public.is_member());

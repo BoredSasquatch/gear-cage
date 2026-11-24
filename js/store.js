@@ -141,6 +141,26 @@ Store.itemEvents=async function(itemId){
     if(error)throw error;const ids=new Set(data.map(e=>e.id));return local.filter(e=>!ids.has(e.id)).concat(data);}
   catch(e){return local;}
 };
+/* ---------- equipment photos (Supabase Storage bucket "item-photos"; demo mode keeps them on the device) ---------- */
+const BUCKET="item-photos";
+const blobToDataURL=b=>new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(b);});
+Store.photoUrl=function(i,thumb){if(!i||!i.photo_path)return"";
+  if(S.mode==="demo")return thumb?(i.photo_thumb||""):(i.photo_full||i.photo_thumb||"");
+  return `${String(CFG.supabaseUrl).replace(/\/$/,"")}/storage/v1/object/public/${BUCKET}/${i.photo_path}${thumb?"-t":""}.jpg?v=${i.photo_v||0}`;};
+Store.uploadPhoto=async function(item,full,thumb){
+  if(S.mode==="demo"){const t=await blobToDataURL(thumb);const f=full.size<350000?await blobToDataURL(full):t;
+    Store.patch("items",item.id,{photo_path:"demo",photo_thumb:t,photo_full:f,photo_v:Date.now()});return{ok:true};}
+  if(!sb||!S.session)return{ok:false,message:"you're not signed in"};
+  const base=item.id+"/photo",opt={contentType:"image/jpeg",upsert:true,cacheControl:"31536000"};
+  for(const [name,blob] of [[base+".jpg",full],[base+"-t.jpg",thumb]]){
+    const {error}=await sb.storage.from(BUCKET).upload(name,blob,opt);
+    if(error)return{ok:false,message:/bucket not found/i.test(error.message)?"photo storage isn't set up yet (run update 3 in Supabase)":error.message};}
+  Store.patch("items",item.id,{photo_path:base,photo_v:Date.now()});Store.log("photo",{item_id:item.id});return{ok:true};
+};
+Store.removePhoto=async function(item){if(!item)return{ok:false,message:"item not found"};
+  if(S.mode!=="demo"&&sb&&item.photo_path){const {error}=await sb.storage.from(BUCKET).remove([item.photo_path+".jpg",item.photo_path+"-t.jpg"]);if(error)return{ok:false,message:error.message};}
+  Store.patch("items",item.id,S.mode==="demo"?{photo_path:null,photo_thumb:null,photo_full:null}:{photo_path:null});return{ok:true};
+};
 Store.saveSettings=async function(patch){
   S.settings=Object.assign({},S.settings,patch);saveCache();emit();
   if(S.mode==="demo"||!sb)return {ok:true};
