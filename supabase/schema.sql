@@ -232,3 +232,6 @@ drop policy if exists "gear cage photos replace" on storage.objects;
 create policy "gear cage photos replace" on storage.objects for update using (bucket_id = 'item-photos' and public.is_member());
 drop policy if exists "gear cage photos remove" on storage.objects;
 create policy "gear cage photos remove" on storage.objects for delete using (bucket_id = 'item-photos' and public.is_member());
+
+-- ---------- kit reference photos (same as migration-004-kit-photos.sql) ----------
+alter table public.kits add column if not exists photos jsonb not null default '[]'::jsonb;

@@ -161,6 +161,21 @@ Store.removePhoto=async function(item){if(!item)return{ok:false,message:"item no
   if(S.mode!=="demo"&&sb&&item.photo_path){const {error}=await sb.storage.from(BUCKET).remove([item.photo_path+".jpg",item.photo_path+"-t.jpg"]);if(error)return{ok:false,message:error.message};}
   Store.patch("items",item.id,S.mode==="demo"?{photo_path:null,photo_thumb:null,photo_full:null}:{photo_path:null});return{ok:true};
 };
+/* kit reference photos: up to 5 per kit, stored as kits.photos = [{p:"kits/<kit>/<id>", v}] */
+Store.KIT_PHOTO_MAX=5;
+Store.kitPhotoUrl=function(ph,thumb){if(!ph)return"";if(ph.t)return thumb?ph.t:(ph.f||ph.t);
+  return `${String(CFG.supabaseUrl).replace(/\/$/,"")}/storage/v1/object/public/${BUCKET}/${ph.p}${thumb?"-t":""}.jpg?v=${ph.v||0}`;};
+Store.uploadKitPhoto=async function(kit,full,thumb){const list=(kit.photos||[]).slice();
+  if(list.length>=Store.KIT_PHOTO_MAX)return{ok:false,message:`a kit can have up to ${Store.KIT_PHOTO_MAX} photos`};
+  if(S.mode==="demo"){const t=await blobToDataURL(thumb);const f=full.size<350000?await blobToDataURL(full):t;list.push({p:"demo-"+uuid(),t,f,v:Date.now()});Store.patch("kits",kit.id,{photos:list});return{ok:true};}
+  if(!sb||!S.session)return{ok:false,message:"you're not signed in"};
+  const p=`kits/${kit.id}/${uuid()}`,opt={contentType:"image/jpeg",upsert:true,cacheControl:"31536000"};
+  for(const [name,blob] of [[p+".jpg",full],[p+"-t.jpg",thumb]]){const {error}=await sb.storage.from(BUCKET).upload(name,blob,opt);
+    if(error)return{ok:false,message:/bucket not found/i.test(error.message)?"photo storage isn't set up yet (run update 3 in Supabase)":error.message};}
+  list.push({p,v:Date.now()});Store.patch("kits",kit.id,{photos:list});return{ok:true};};
+Store.removeKitPhoto=async function(kit,idx){const list=(kit.photos||[]).slice();const ph=list[idx];if(!ph)return{ok:false,message:"photo not found"};
+  if(S.mode!=="demo"&&sb&&!ph.t){const {error}=await sb.storage.from(BUCKET).remove([ph.p+".jpg",ph.p+"-t.jpg"]);if(error)return{ok:false,message:error.message};}
+  list.splice(idx,1);Store.patch("kits",kit.id,{photos:list});return{ok:true};};
 Store.saveSettings=async function(patch){
   S.settings=Object.assign({},S.settings,patch);saveCache();emit();
   if(S.mode==="demo"||!sb)return {ok:true};

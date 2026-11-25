@@ -80,7 +80,7 @@ function chromeHTML(){
   return `<header class="top"><div class="wrap"><div class="top-row">
     <a class="brand" href="#home"><img class="logo-colour" src="assets/logo-colour.png" alt="Kehelmala, inspired storytelling"><img class="logo-white" src="assets/logo-white.png" alt="Kehelmala, inspired storytelling">
       <div class="app"><b>Gear Cage</b><span id="studio"></span></div></a>
-    <nav class="desk">${["home:Overview","jobs:Jobs","gear:Gear","kits:Kits","maint:Maintenance","labels:Labels"].map(x=>{const[h,t]=x.split(":");return`<a href="#${h}" data-nav="${h}">${t}</a>`;}).join("")}
+    <nav class="desk">${["home:Overview","jobs:Jobs","gear:Gear","kits:Kit assembly","maint:Maintenance","labels:Labels"].map(x=>{const[h,t]=x.split(":");return`<a href="#${h}" data-nav="${h}">${t}</a>`;}).join("")}
       <a href="#more" data-nav="more">More</a></nav>
     <span id="sync"></span>
     <button class="btn primary small" data-act="scan" style="min-height:38px">${IC.cam} Scan</button>
@@ -205,7 +205,8 @@ function pullView(j){
   const why=!sm.going.length?"Add a kit or scan gear to build the pull sheet.":sm.pending?`${sm.pending} item${sm.pending>1?"s":""} still to scan or leave behind.`:sm.blocked?`${sm.blocked} item${sm.blocked>1?"s are":" is"} not available. Swap or leave them.`:sm.critLeft&&!ack?"Confirm you're leaving critical items behind.":"Everything is pulled. Ready to go.";
   return `<div class="panel pad stack">
     ${kits.length?`<div style="display:grid;gap:8px"><span class="eyebrow">Add a kit</span><div class="kitpick">${kits.map(k=>{const on=(j.kit_ids||[]).includes(k.id);
-      return`<button data-write data-act="job-kit" data-id="${k.id}" class="${on?"on":""}" aria-pressed="${on}"><b>${esc(k.name)}</b><span class="small muted">${(k.item_ids||[]).length} items${on?" · added":""}</span></button>`;}).join("")}</div></div>`:""}
+      const ph=(k.photos||[])[0];
+      return`<button data-write data-act="job-kit" data-id="${k.id}" class="${on?"on":""} ${ph?"withphoto":""}" aria-pressed="${on}">${ph?`<img class="kit-pick-img" src="${esc(St.kitPhotoUrl(ph,true))}" alt="" data-act="kit-gallery" data-id="${k.id}" data-idx="0" title="See what this kit looks like">`:""}<span style="display:grid;gap:2px"><b>${esc(k.name)}</b><span class="small muted">${(k.item_ids||[]).length} items${on?" · added":""}${ph?` · ${(k.photos||[]).length} photo${(k.photos||[]).length>1?"s":""}`:""}</span></span></button>`;}).join("")}</div></div>`:""}
     <div style="display:grid;gap:6px"><span class="eyebrow">Scan every item as you pull it</span>${scanBarHTML("scan-pull","Scan a QR label or type a tag")}
       <span class="small muted">Scanning an item already on the sheet ticks it. Anything else is added. Scanning a case adds the items that live in it, and each of those still needs its own scan.</span></div></div>
   ${ls.length?`<div class="panel" style="margin-top:14px">${[...groups.keys()].sort().map(k=>{const g=groups.get(k);
@@ -239,7 +240,7 @@ function wrapView(j){
     <div class="casebar ${cur?"":"none"}">${cur?`<div class="grow"><span class="small" style="opacity:.8">Packing into</span><br><b>${esc(cur.tag)} · ${esc(cur.name)}</b></div><button class="btn small" data-act="wrap-case-clear" data-id="${j.id}">Done with this case</button>`
       :`<div class="grow"><b>Scan a case to start packing it.</b><div class="small">Then scan every item as it goes in. Items that don't go in a case can be marked Loose.</div></div>`}</div>
     ${scanBarHTML("scan-wrap",cur?"Scan the next item, or another case":"Scan a case QR label")}
-    <div class="small muted">Works without signal. Scans are kept on this phone and sync when you're back online.</div></div>
+    <div class="small muted">Works without signal. Scans are kept on this phone and sync when you're back online. Label won't scan? Tick the box next to the item instead.</div></div>
   <div class="panel" style="margin-top:14px">
     ${sec("Still to pack",todo)}
     ${[...packed.keys()].map(cid=>{const c=G.item(cid);return sec("In "+esc(c?c.tag+" "+c.name:"a case"),packed.get(cid));}).join("")}
@@ -251,7 +252,9 @@ function wrapView(j){
     <div style="display:grid;gap:6px"><button class="btn primary big" data-write data-act="finish-wrap" data-id="${j.id}" ${todo.length?"disabled":""}>Finish wrap</button>
     <button class="btn small" data-act="skip-wrap" data-id="${j.id}">Skip to studio check-in</button></div></div>`;}
 function wrapLine(j,l){const i=l.it;const wrongHome=l.state==="packed"&&i.home_case_id&&i.home_case_id!==l.packed_case_id?G.item(i.home_case_id):null;
+  const done=l.state==="packed"||l.state==="loose";
   return `<div class="line ${l.state==="out"?"":l.state==="damaged"||l.state==="missing"?"prob":"done"}">
+    <button class="tick" data-write data-act="wrap-tick" data-id="${l.id}" aria-pressed="${done}" aria-label="${done?"Packed":"Mark as packed"}: ${esc(i.name)}" title="Tick if you can't scan the label">${CHECK}</button>
     ${thumbHTML(i)}<div class="grow"><div class="t">${tagHTML(i)}<b>${esc(i.name)}</b>${i.critical?`<span class="crit">Critical</span>`:""}</div>
       <div class="small muted">${i.home_case_id&&l.state==="out"?"Lives in "+esc((G.item(i.home_case_id)||{}).tag||""):itemMeta(i,l)}${l.wrap_by?" · "+esc(G.personName(l.wrap_by))+" "+fmtWhen(l.wrap_at):""}${l.note?" · "+esc(l.note):""}</div>
       ${wrongHome?`<div class="warnline">Normally lives in ${esc(wrongHome.tag)} ${esc(wrongHome.name)}</div>`:""}</div>
@@ -266,7 +269,7 @@ function studioView(j){
   const order=[...g.keys()].sort((a,b)=>(a==="none")-(b==="none")||(a==="loose")-(b==="loose"));
   const title=k=>k==="none"?"Not packed at wrap":k==="loose"?"Travelled loose":(()=>{const c=G.item(k.slice(1));return"In "+(c?c.tag+" "+c.name:"a case");})();
   return `<div class="panel pad stack">${scanBarHTML("scan-studio","Scan each item back onto the shelf")}
-    <div class="small muted">Scan a case first to see what's packed in it, then scan each item as you unpack. Whoever checks gear in is logged; the job stays with ${esc(G.personName(j.responsible_id)||"the responsible person")}.</div></div>
+    <div class="small muted">Scan a case first to see what's packed in it, then scan each item as you unpack. Label won't scan? Tick the box next to the item instead. Whoever checks gear in is logged; the job stays with ${esc(G.personName(j.responsible_id)||"the responsible person")}.</div></div>
   <div class="panel" style="margin-top:14px">${order.map(k=>{const arr=g.get(k);return `<div class="loc"><span>${esc(title(k))}</span><span class="muted" style="margin-left:auto">${arr.filter(l=>l.back_at).length}/${arr.length}</span></div>${arr.sort((a,b)=>G.byTag(a.it,b.it)).map(l=>studioLine(j,l)).join("")}`;}).join("")}</div>
   <div class="footer"><div class="grow"><div class="small"><b>${sm.done.length}</b> of ${sm.ls.length} checked in${sm.damaged.length?` · ${sm.damaged.length} damaged`:""}${sm.missing.length?` · ${sm.missing.length} missing (${money(G.sum(sm.missing,l=>G.repl(G.item(l.item_id))))})`:""}</div>
     <div class="bar ${sm.left.length?"":"ok"}"><i style="width:${sm.ls.length?sm.done.length/sm.ls.length*100:0}%"></i></div>
@@ -274,7 +277,7 @@ function studioView(j){
     <button class="btn primary big" data-write data-act="close-job" data-id="${j.id}" ${sm.left.length?"disabled":""}>Close job</button></div>`;}
 function studioLine(j,l){const i=l.it;const back=!!l.back_at;const st=l.state;const conf=st==="missing"&&l.back_by;
   return `<div class="line ${back&&st==="returned"?"done":(st==="damaged"||st==="missing")?"prob":""}">
-    <button class="tick" data-write data-act="studio-back" data-id="${l.id}" aria-pressed="${back}" aria-label="Back in ${esc(i.name)}">${CHECK}</button>
+    <button class="tick" data-write data-act="studio-back" data-id="${l.id}" aria-pressed="${back}" aria-label="${back?"Checked in":"Mark as checked in"}: ${esc(i.name)}" title="Tick if you can't scan the label">${CHECK}</button>
     ${thumbHTML(i)}<div class="grow"><div class="t">${tagHTML(i)}<b>${esc(i.name)}</b>${i.critical?`<span class="crit">Critical</span>`:""}${st==="damaged"?chip("Damaged","warn"):""}${st==="missing"?chip(conf?"Missing":"Missing at wrap","bad"):""}</div>
       <div class="small muted">${back?"Back "+fmtWhen(l.back_at)+(l.back_by?" · "+esc(G.personName(l.back_by)):""):esc([i.room,i.shelf].filter(Boolean).join(" · ")||"")}${l.note?" · "+esc(l.note):""}${st==="missing"?" · replace for "+money(G.repl(i)):""}</div></div>
     <div class="acts" data-write>${back||conf?`<button class="btn small" data-act="studio-undo" data-id="${l.id}">Undo</button>`:
@@ -333,14 +336,15 @@ function vItem(){
 
 /* ---------- kits ---------- */
 function vKits(){const kits=[...S.kits.values()].sort((a,b)=>a.name.localeCompare(b.name));
-  return `<div class="head"><div class="sp"><span class="eyebrow">Kits · ${kits.length}</span><h1>Camera configurations</h1></div><button class="btn primary" data-write data-act="add-kit">New kit</button></div>
+  return `<div class="head"><div class="sp"><span class="eyebrow">${kits.length} kit${kits.length===1?"":"s"}</span><h1>Kit assembly</h1></div><button class="btn primary" data-write data-act="add-kit">New kit</button></div>
   ${kits.length?`<div class="grid2">${kits.map(k=>{const its=(k.item_ids||[]).map(G.item).filter(Boolean);const bad=its.filter(i=>i.status!=="available");
     const inCases=G.sum(its.filter(i=>i.is_case),c=>G.caseContents(c.id).length);
     return `<div class="panel pad stack" style="gap:8px"><div style="display:flex;gap:8px;justify-content:space-between;align-items:center"><h2>${esc(k.name)}</h2><span class="tag">${esc(k.tag||"")}</span></div>
+      ${kitStrip(k)}
       ${k.description?`<div class="small muted">${esc(k.description)}</div>`:""}
       <div style="display:flex;gap:6px;flex-wrap:wrap">${bad.length?chip(bad.length+" unavailable","warn"):chip("Ready","ok")}${chip(its.length+" items"+(inCases?` + ${inCases} in cases`:""))}</div>
       <div class="small">Replacement value <b class="num">${money(G.sum(its,G.repl)+G.sum(its.filter(i=>i.is_case),c=>G.sum(G.caseContents(c.id),G.repl)))}</b></div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn small" data-write data-act="edit-kit" data-id="${k.id}">Edit</button></div></div>`;}).join("")}</div>`
+      <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn small" data-act="kit-gallery" data-id="${k.id}" data-idx="0">Photos (${(k.photos||[]).length}/${St.KIT_PHOTO_MAX})</button><button class="btn small" data-write data-act="edit-kit" data-id="${k.id}">Edit</button></div></div>`;}).join("")}</div>`
   :`<div class="panel empty">Kits are gear that travels together, like an A-camera build. Add cases to a kit and everything that lives in them comes along.</div>`}`;}
 
 /* ---------- maintenance ---------- */
@@ -387,6 +391,16 @@ function drawTo(img,max,square){const w=img.width,h=img.height;let sx=0,sy=0,sw=
   const k=Math.min(1,max/Math.max(sw,sh));const c=document.createElement("canvas");c.width=Math.round(sw*k);c.height=Math.round(sh*k);
   const ctx=c.getContext("2d");ctx.fillStyle="#fff";ctx.fillRect(0,0,c.width,c.height);ctx.drawImage(img,sx,sy,sw,sh,0,0,c.width,c.height);return c;}
 const toBlob=(c,q)=>new Promise((res,rej)=>c.toBlob(b=>b?res(b):rej(new Error("Couldn't process that photo")),"image/jpeg",q));
+async function addKitPhoto(id,file){const k=S.kits.get(id);if(!k)return;
+  if(S.mode==="live"&&!navigator.onLine){toast("Adding a photo needs a connection. Try again when you're online.","bad");return;}
+  if(!/^image\//.test(file.type||"image/")){toast("That isn't a photo. Choose a JPEG or PNG.","bad");return;}
+  toast("Saving photo…");
+  try{const img=await loadImage(file);const full=await toBlob(drawTo(img,1600,false),0.82);const thumb=await toBlob(drawTo(img,320,true),0.8);
+    const r=await St.uploadKitPhoto(k,full,thumb);toast(r.ok?`Photo added to ${k.name}`:"Couldn't save the photo: "+r.message,r.ok?"ok":"bad");
+    if(r.ok&&M.gal&&M.gal.id===id)kitGallery(id,(S.kits.get(id).photos||[]).length-1);}
+  catch(e){toast(e.message||"Couldn't read that photo","bad");}}
+function pickImage(cb){const inp=document.createElement("input");inp.type="file";inp.accept="image/*";inp.style.display="none";document.body.appendChild(inp);
+  inp.addEventListener("change",()=>{const f=inp.files&&inp.files[0];inp.remove();if(f)cb(f);});inp.click();}
 async function addPhoto(id,file){const i=G.item(id);if(!i)return;
   if(S.mode==="live"&&!navigator.onLine){toast("Adding a photo needs a connection. Try again when you're online.","bad");return;}
   if(!/^image\//.test(file.type||"image/")){toast("That isn't a photo. Choose a JPEG or PNG.","bad");return;}
@@ -410,7 +424,7 @@ function vPeople(){if(!isAdmin())return `<div class="panel empty">Only admins ca
     <div><button class="btn primary">Save</button></div></form>`;}
 function vMore(){const link=(h,t,s)=>`<a class="row click" href="#${h}" style="text-decoration:none;color:inherit"><div class="grow"><b>${t}</b><div class="small muted">${s}</div></div><span class="muted">›</span></a>`;
   return `<div class="head"><div class="sp"><span class="eyebrow">More</span><h1>${esc(S.me&&S.me.name||"Menu")}</h1></div></div>
-  <div class="panel">${link("kits","Kits","Camera configurations that go out together")}${link("maint","Maintenance","Service schedule and repairs")}${link("labels","Print QR labels","Sticker sheets and label printer rolls")}
+  <div class="panel">${link("kits","Kit assembly","Kits that go out together, with reference photos")}${link("maint","Maintenance","Service schedule and repairs")}${link("labels","Print QR labels","Sticker sheets and label printer rolls")}
     ${isAdmin()?link("people","People","Approve crew and set who's an admin"):""}${link("settings","Settings","Studio name, currency, sync and sign out")}</div>`;}
 function vSettings(){const n=St.pending();
   return `<div class="head"><div class="sp"><span class="eyebrow">Settings</span><h1>Settings</h1></div></div>
@@ -508,6 +522,29 @@ function maintForm(id,itemId,type){const r=id?S.maintenance.get(id):{item_id:ite
       <label class="f">Currency<select class="input" name="cost_currency"><option value="LKR" ${(r.cost_currency||"LKR")==="LKR"?"selected":""}>Rupees (LKR)</option><option value="USD" ${r.cost_currency==="USD"?"selected":""}>US dollars (USD)</option></select></label><label class="f">Done by<input class="input" name="vendor" value="${esc(r.vendor)}"></label></div>
     ${!id?`<label class="chk"><input type="checkbox" name="oos"><span>Take this item out of service until the record is done</span></label>`:""}</div>
     <div class="mf">${id&&isAdmin()?`<button type="button" class="btn danger" data-act="del-maint" data-id="${id}" data-confirm="Delete this record?">Delete</button><span style="flex:1"></span>`:""}<button type="button" class="btn" data-act="close-modal">Cancel</button><button class="btn primary">Save</button></div></form>`);}
+/* Kit reference photos: a strip on the kit card, and a gallery to page through, add (up to 5) and remove. */
+function kitStrip(k){const ps=k.photos||[];
+  if(!ps.length)return `<button type="button" class="kit-strip-empty" data-act="kit-gallery" data-id="${k.id}" data-idx="0">${IC.cam}<span>No photos yet. Add up to ${St.KIT_PHOTO_MAX} so crew can see the assembled kit.</span></button>`;
+  return `<div class="kit-strip">${ps.map((p,ix)=>`<img src="${esc(St.kitPhotoUrl(p,true))}" alt="${esc(k.name)} photo ${ix+1}" loading="lazy" data-act="kit-gallery" data-id="${k.id}" data-idx="${ix}">`).join("")}</div>`;}
+function kitGallery(kitId,idx){const k=S.kits.get(kitId);if(!k)return;const ps=k.photos||[];idx=Math.max(0,Math.min(idx||0,ps.length-1));M.gal={id:kitId,idx};
+  const cur=ps[idx];const full=ps.length>=St.KIT_PHOTO_MAX;
+  openModal(`${mh(esc(k.name))}<div class="mb">
+    ${cur?`<div class="gal-main"><img src="${esc(St.kitPhotoUrl(cur,false))}" alt="${esc(k.name)} photo ${idx+1} of ${ps.length}">
+      ${ps.length>1?`<button type="button" class="gal-nav prev" data-act="gal-go" data-idx="${(idx-1+ps.length)%ps.length}" aria-label="Previous photo">‹</button><button type="button" class="gal-nav next" data-act="gal-go" data-idx="${(idx+1)%ps.length}" aria-label="Next photo">›</button>`:""}</div>
+      <div class="small muted" style="text-align:center">Photo ${idx+1} of ${ps.length}</div>
+      <div class="kit-strip" style="justify-content:center">${ps.map((p,ix)=>`<img src="${esc(St.kitPhotoUrl(p,true))}" alt="" data-act="gal-go" data-idx="${ix}" class="${ix===idx?"on":""}">`).join("")}</div>`
+     :`<div class="photo-empty">${IC.cam}<span>No photos of this kit yet.</span><span class="small">Add up to ${St.KIT_PHOTO_MAX}: the kit packed, assembled on the camera, and close-ups of anything easy to get wrong.</span></div>`}
+    ${k.description?`<div class="small">${esc(k.description)}</div>`:""}</div>
+    <div class="mf" data-write>${cur?`<button class="btn danger" data-act="kit-photo-rm" data-id="${k.id}" data-idx="${idx}" data-confirm="Remove this photo?">Remove this photo</button><span style="flex:1"></span>`:""}
+      <button class="btn ${cur?"":"primary"}" data-act="kit-photo-add" data-id="${k.id}" ${full?"disabled":""}>${full?`${St.KIT_PHOTO_MAX} photos (the most)`:"Add photo"}</button><button class="btn primary" data-act="close-modal">Done</button></div>`);}
+/* Wrap without a scan: ask which case the item went into (its home case first), or whether it travels loose. */
+function wrapCasePicker(job,l){const it=G.item(l.item_id);
+  const cases=G.linesOf(job.id).filter(x=>x.state!=="left").map(x=>G.item(x.item_id)).filter(c=>c&&c.is_case)
+    .sort((a,b)=>(b.id===it.home_case_id)-(a.id===it.home_case_id)||G.byTag(a,b));
+  openModal(`${mh("Where did "+esc(it.tag)+" go?")}<div class="mb"><div class="row" style="padding:0;border:0">${thumbHTML(it)}<div class="grow"><b>${esc(it.name)}</b><div class="small muted">Ticked by hand. Choose the case it's packed in.</div></div></div>
+    <div class="panel">${cases.map(c=>`<button type="button" class="row click" style="width:100%;background:none;border:0;border-top:1px solid var(--line);text-align:left" data-act="wrap-pick" data-line="${l.id}" data-case="${c.id}">${thumbHTML(c,true)}${tagHTML(c)}<span class="grow">${esc(c.name)}</span>${c.id===it.home_case_id?chip("Its home case","ok"):""}</button>`).join("")||`<div class="empty">No cases on this job.</div>`}
+      <button type="button" class="row click" style="width:100%;background:none;border:0;border-top:1px solid var(--line);text-align:left" data-act="wrap-pick" data-line="${l.id}" data-case="loose"><span class="grow"><b>Travelling loose</b><div class="small muted">Not in a case, for example a tripod or stand</div></span></button></div></div>
+    <div class="mf"><button class="btn" data-act="close-modal">Cancel</button></div>`);}
 function noteForm(title,hint,formKey,data){openModal(`${mh(esc(title))}<form data-form="${formKey}" ${Object.entries(data).map(([k,v])=>`data-${k}="${esc(v)}"`).join(" ")}><div class="mb"><div>${esc(hint)}</div>
   <label class="f">What happened<textarea class="input" name="note" rows="3" autofocus></textarea></label></div><div class="mf"><button type="button" class="btn" data-act="close-modal">Cancel</button><button class="btn primary">Save</button></div></form>`);}
 
@@ -594,7 +631,18 @@ document.addEventListener("click",e=>{
     case"wrap-mark":{const l=lineById(id);if(!l||!job)break;const s=t.dataset.s;if(s==="damaged"){noteForm("What's damaged?","It stays on the job and comes back to the studio. A repair record opens at check-in.","wrap-dmg",{id});return;}G.wrapMark(job,l,s);break;}
     case"finish-wrap":if(job){G.finishWrap(job);toast("Wrap finished. Check it in at the studio.","ok");}break;
     case"skip-wrap":UI.jobMode[id]="studio";break;
-    case"studio-back":{const l=lineById(id);if(!l||!job)break;if(l.back_at)G.undoCheckIn(job,l);else G.checkInLine(job,l,l.state==="damaged"?"damaged":"returned",l.note);break;}
+    case"studio-back":{const l=lineById(id);if(!l||!job)break;if(l.back_at)G.undoCheckIn(job,l);else{G.checkInLine(job,l,l.state==="damaged"?"damaged":"returned",l.note);St.log("ticked by hand",{item_id:l.item_id,job_id:job.id,note:"Studio check-in, label not scanned"});}break;}
+    case"wrap-tick":{const l=lineById(id);if(!l||!job)break;const it=G.item(l.item_id);if(!it)break;
+      if(l.state==="packed"||l.state==="loose"){G.wrapMark(job,l,"out");break;}
+      if(it.is_case){G.wrapMark(job,l,"loose");St.log("ticked by hand",{item_id:it.id,job_id:job.id,note:"Wrap, label not scanned"});break;}
+      const cur=UI.wrapCase[job.id];
+      if(cur&&G.item(cur)){const r=G.wrapScan(job,it.tag,cur);St.log("ticked by hand",{item_id:it.id,job_id:job.id,case_id:cur,note:"Wrap, label not scanned"});toast(r.msg,r.kind==="bad"?"bad":"ok");if(r.warn)toast(r.warn,"bad");break;}
+      wrapCasePicker(job,l);return;}
+    case"wrap-pick":{const l=lineById(t.dataset.line);const j2=l&&S.jobs.get(l.job_id);const it=l&&G.item(l.item_id);if(!l||!j2||!it){closeModal();break;}
+      const c=t.dataset.case;closeModal();
+      if(c==="loose"){G.wrapMark(j2,l,"loose");St.log("ticked by hand",{item_id:it.id,job_id:j2.id,note:"Wrap, travelling loose, label not scanned"});toast(`${it.tag} marked as travelling loose`,"ok");break;}
+      const r=G.wrapScan(j2,it.tag,c);UI.wrapCase[j2.id]=c;LSx.set("gc-wrapcase",UI.wrapCase);St.log("ticked by hand",{item_id:it.id,job_id:j2.id,case_id:c,note:"Wrap, label not scanned"});
+      toast(r.msg+". Next ticks pack into this case too.","ok");if(r.warn)toast(r.warn,"bad");break;}
     case"studio-undo":{const l=lineById(id);if(l&&job)G.undoCheckIn(job,l);break;}
     case"studio-dmg":noteForm("What's damaged?","It goes out of service and a repair record opens in Maintenance.","studio-dmg",{id});return;
     case"studio-miss":{const l=lineById(id);if(l&&job)G.checkInLine(job,l,"missing");break;}
@@ -622,6 +670,10 @@ document.addEventListener("click",e=>{
         <div class="small muted">${esc(G.whereIs(i).text)}</div></div><div class="mf"><button class="btn" data-act="item" data-id="${i.id}">Open item</button><button class="btn primary" data-act="close-modal">Close</button></div>`);return;}
     case"photo-add":{const inp=document.createElement("input");inp.type="file";inp.accept="image/*";inp.style.display="none";document.body.appendChild(inp);
       inp.addEventListener("change",()=>{const f=inp.files&&inp.files[0];inp.remove();if(f)addPhoto(id,f);});inp.click();return;}
+    case"kit-gallery":{e.stopPropagation();kitGallery(id,+t.dataset.idx||0);return;}
+    case"gal-go":if(M.gal)kitGallery(M.gal.id,+t.dataset.idx||0);return;
+    case"kit-photo-add":pickImage(f=>addKitPhoto(id,f));return;
+    case"kit-photo-rm":{const k=S.kits.get(id);if(!k)return;const ix=+t.dataset.idx||0;St.removeKitPhoto(k,ix).then(r=>{toast(r.ok?"Photo removed":"Couldn't remove the photo: "+r.message,r.ok?"ok":"bad");if(r.ok)kitGallery(id,Math.max(0,ix-1));});return;}
     case"photo-rm":{St.removePhoto(G.item(id)).then(r=>toast(r.ok?"Photo removed":"Couldn't remove the photo: "+r.message,r.ok?"ok":"bad"));return;}
     case"export":download(`gear-${G.today()}.csv`,CSV.toCSV(CSV.exportRows()));return;
     case"fetch-rate":{t.disabled=true;fetch("https://open.er-api.com/v6/latest/USD").then(r=>r.json()).then(j=>{const v=j&&j.rates&&j.rates.LKR;if(!v)throw new Error("no rate");
@@ -642,6 +694,12 @@ document.addEventListener("click",e=>{
 });
 document.addEventListener("click",e=>{if(e.target.id==="modal")closeModal();});
 document.addEventListener("keydown",e=>{if(e.key==="Escape"){if(!$("#scanner").hidden)stopScanner();else if(!$("#modal").hidden)closeModal();}});
+/* kit gallery: arrow keys and swipe to page through photos */
+document.addEventListener("keydown",e=>{if(!M.gal||$("#modal").hidden)return;const k=S.kits.get(M.gal.id);const n=k&&(k.photos||[]).length;if(!n)return;
+  if(e.key==="ArrowRight")kitGallery(M.gal.id,(M.gal.idx+1)%n);if(e.key==="ArrowLeft")kitGallery(M.gal.id,(M.gal.idx-1+n)%n);});
+let swipeX=null;document.addEventListener("touchstart",e=>{swipeX=e.target.closest&&e.target.closest(".gal-main")?e.touches[0].clientX:null;},{passive:true});
+document.addEventListener("touchend",e=>{if(swipeX===null||!M.gal)return;const dx=e.changedTouches[0].clientX-swipeX;swipeX=null;const k=S.kits.get(M.gal.id);const n=k&&(k.photos||[]).length;
+  if(n>1&&Math.abs(dx)>40)kitGallery(M.gal.id,(M.gal.idx+(dx<0?1:-1)+n)%n);},{passive:true});
 document.addEventListener("input",e=>{const t=e.target;
   if(t.id==="pick-q"){M.picker.q=t.value;rerenderPicker();return;}
   if(t.id==="mpick-q"&&M.mpick){M.mpick.q=t.value;rerenderMpick();return;}
