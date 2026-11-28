@@ -131,14 +131,40 @@ function confirmOut(job){
 
 /* ---------- wrap on set ---------- */
 const OUTSTANDING_AT_WRAP=["out"];
+/* A case that wasn't pulled for the job but is used at wrap (a spare bag, say): it joins the job as travelling,
+   goes out of stock, and comes back through studio check-in like everything else. */
+function caseUsable(job,c){if(!c||!c.is_case)return"Not a case";const h=jobHolding(c.id);if(h&&h.id!==job.id)return`Out on ${h.name}`;
+  if(c.status==="lost")return"Marked missing";if(c.status==="retired")return"Retired";return null;}
+function addCaseAtWrap(job,c){const why=caseUsable(job,c);if(why)return{ok:false,msg:`Can't use ${c.tag}: ${why.charAt(0).toLowerCase()+why.slice(1)}`};
+  if(lineFor(job.id,c.id))return{ok:true};const at=St.nowISO();
+  St.insert("job_lines",{job_id:job.id,item_id:c.id,kit_id:null,via:"wrap",parent_id:null,state:"loose",out_by:me(),out_at:at,wrap_by:me(),wrap_at:at,note:"Added at wrap"});
+  St.patch("items",c.id,{status:"out",in_case_id:null});St.log("added at wrap",{item_id:c.id,job_id:job.id});return{ok:true,added:true};}
+/* Case check: for a case with fixed contents, tick off what lives in it in one go instead of scanning each item.
+   Only items whose home is this case are offered; critical ones are ticked one by one in the app; studio check-in stays item by item. */
+const CASE_CHECK_NOTE="Confirmed by case check";
+function caseCheckLines(job,caseId){return linesOf(job.id).filter(l=>{const i=item(l.item_id);return i&&i.home_case_id===caseId&&(l.state==="out"||(l.state==="packed"&&l.packed_case_id===caseId));})
+  .sort((a,b)=>byTag(item(a.item_id),item(b.item_id)));}
+function confirmCase(job,caseId,lineIds){const c=item(caseId);if(!c||!c.is_case)return{ok:false,msg:"Not a case"};
+  const ok=(lineIds||[]).map(id=>S.job_lines.get(id)).filter(l=>l&&l.job_id===job.id&&l.state==="out"&&item(l.item_id)&&item(l.item_id).home_case_id===caseId);
+  if(!ok.length)return{ok:true,n:0};
+  const cl=lineFor(job.id,caseId);
+  if(!cl){const r=addCaseAtWrap(job,c);if(!r.ok)return r;}
+  else if(cl.state==="out"){St.patch("job_lines",cl.id,{state:"loose",wrap_by:me(),wrap_at:St.nowISO(),packed_case_id:null});St.log("loose",{item_id:c.id,job_id:job.id});}
+  const at=St.nowISO();let n=0;
+  ok.forEach(l=>{const i=item(l.item_id);
+    St.patch("job_lines",l.id,{state:"packed",packed_case_id:caseId,wrap_by:me(),wrap_at:at,note:CASE_CHECK_NOTE});
+    St.patch("items",i.id,{in_case_id:caseId});St.log("packed",{item_id:i.id,job_id:job.id,case_id:caseId,note:CASE_CHECK_NOTE});n++;});
+  return{ok:true,n};}
 function wrapScan(job,code,currentCaseId){ // returns {ok,msg,kind,setCase}
   const f=findCode(code);if(!f)return{ok:false,msg:`No gear matches "${cleanCode(code)}"`};
   if(f.type==="kit")return{ok:false,msg:"That's a kit label. Scan the case, then each item you put in it."};
   const i=f.obj;const l=lineFor(job.id,i.id);
   if(i.is_case){
-    if(l&&l.state==="out"){St.patch("job_lines",l.id,{state:"loose",wrap_by:me(),wrap_at:St.nowISO(),packed_case_id:null});St.log("loose",{item_id:i.id,job_id:job.id});}
+    if(!l){const r=addCaseAtWrap(job,i);if(!r.ok)return r;}
+    else if(l.state==="out"){St.patch("job_lines",l.id,{state:"loose",wrap_by:me(),wrap_at:St.nowISO(),packed_case_id:null});St.log("loose",{item_id:i.id,job_id:job.id});}
     const n=packedIn(i.id).filter(x=>{const xl=lineFor(job.id,x.id);return xl&&xl.state==="packed";}).length;
-    return{ok:true,setCase:i.id,msg:`Packing into ${i.tag} ${i.name}${n?` (${n} already in it)`:""}. Scan each item as it goes in.`,kind:"ok"};}
+    const todo=caseCheckLines(job,i.id).filter(x=>x.state==="out").length;
+    return{ok:true,setCase:i.id,msg:`Packing into ${i.tag} ${i.name}${n?` (${n} already in it)`:""}. `+(todo?`Scan each item as it goes in, or tap Check contents to tick off the ${todo} that live in it.`:"Scan each item as it goes in."),kind:"ok"};}
   if(!l){const other=jobHolding(i.id);return{ok:false,msg:other?`${i.tag} belongs to ${other.name}`:`${i.tag} isn't on this job`};}
   if(!currentCaseId)return{ok:false,msg:"Scan the case you're packing into first, or mark this item as travelling loose.",needCase:true};
   const c=item(currentCaseId);
@@ -202,6 +228,6 @@ function serviceDue(){const r=[];items().forEach(i=>{if(!num(i.service_days)||i.
 
 window.GC={CATS,PREFIX,STATUS,JOB_STATUS,LEAVE_REASONS,SERVICE_TYPES,num,repl,buy,mcost,toDisp,dispCur,rate,needsRate,sum,iso,today,parseD,diffDays,addDays,byTag,items,item,person,personName,
   linesOf,lineFor,caseContents,packedIn,activeJobs,jobHolding,cleanCode,findCode,searchItems,nextTag,nextKitTag,whereIs,clashesFor,issueFor,overlaps,
-  addLine,addKit,removeKit,removeLine,pullScan,pullSummary,confirmOut,wrapScan,wrapMark,wrapSummary,finishWrap,studioScan,checkInLine,undoCheckIn,studioSummary,closeJob,
+  addLine,addKit,removeKit,removeLine,pullScan,pullSummary,confirmOut,caseUsable,addCaseAtWrap,caseCheckLines,confirmCase,wrapScan,wrapMark,wrapSummary,finishWrap,studioScan,checkInLine,undoCheckIn,studioSummary,closeJob,
   finishMaint,serviceDue};
 })();

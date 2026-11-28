@@ -237,7 +237,7 @@ function wrapView(j){
   const todo=ls.filter(l=>l.state==="out");const packed=lineGroups(ls.filter(l=>l.state==="packed"),l=>l.packed_case_id);
   const sec=(title,arr,extra)=>arr.length?`<div class="loc"><span>${title}</span><span class="muted" style="margin-left:auto">${arr.length}</span>${extra||""}</div>${arr.sort((a,b)=>G.byTag(a.it,b.it)).map(l=>wrapLine(j,l)).join("")}`:"";
   return `<div class="panel pad stack">
-    <div class="casebar ${cur?"":"none"}">${cur?`<div class="grow"><span class="small" style="opacity:.8">Packing into</span><br><b>${esc(cur.tag)} · ${esc(cur.name)}</b></div><button class="btn small" data-act="wrap-case-clear" data-id="${j.id}">Done with this case</button>`
+    <div class="casebar ${cur?"":"none"}">${cur?`<div class="grow"><span class="small" style="opacity:.8">Packing into</span><br><b>${esc(cur.tag)} · ${esc(cur.name)}</b></div>${ccBtn(j,cur)}<button class="btn small" data-act="wrap-case-clear" data-id="${j.id}">Done with this case</button>`
       :`<div class="grow"><b>Scan a case to start packing it.</b><div class="small">Then scan every item as it goes in. Items that don't go in a case can be marked Loose.</div></div>`}</div>
     ${scanBarHTML("scan-wrap",cur?"Scan the next item, or another case":"Scan a case QR label")}
     <div class="small muted">Works without signal. Scans are kept on this phone and sync when you're back online. Label won't scan? Tick the box next to the item instead.</div></div>
@@ -258,7 +258,7 @@ function wrapLine(j,l){const i=l.it;const wrongHome=l.state==="packed"&&i.home_c
     ${thumbHTML(i)}<div class="grow"><div class="t">${tagHTML(i)}<b>${esc(i.name)}</b>${i.critical?`<span class="crit">Critical</span>`:""}</div>
       <div class="small muted">${i.home_case_id&&l.state==="out"?"Lives in "+esc((G.item(i.home_case_id)||{}).tag||""):itemMeta(i,l)}${l.wrap_by?" · "+esc(G.personName(l.wrap_by))+" "+fmtWhen(l.wrap_at):""}${l.note?" · "+esc(l.note):""}</div>
       ${wrongHome?`<div class="warnline">Normally lives in ${esc(wrongHome.tag)} ${esc(wrongHome.name)}</div>`:""}</div>
-    <div class="acts" data-write>${l.state==="out"?(i.is_case?`<button class="btn small" data-act="wrap-case" data-jid="${j.id}" data-id="${i.id}">Pack into this</button>`:"")+
+    <div class="acts" data-write>${i.is_case&&l.state!=="missing"?ccBtn(j,i):""}${l.state==="out"?(i.is_case?`<button class="btn small" data-act="wrap-case" data-jid="${j.id}" data-id="${i.id}">Pack into this</button>`:"")+
       `<button class="btn small" data-act="wrap-mark" data-id="${l.id}" data-s="loose">Loose</button><button class="btn small" data-act="wrap-mark" data-id="${l.id}" data-s="damaged">Damaged</button><button class="btn small danger" data-act="wrap-mark" data-id="${l.id}" data-s="missing">Missing</button>`
       :`<button class="btn small" data-act="wrap-mark" data-id="${l.id}" data-s="out">Undo</button>`}</div></div>`;}
 
@@ -537,14 +537,46 @@ function kitGallery(kitId,idx){const k=S.kits.get(kitId);if(!k)return;const ps=k
     ${k.description?`<div class="small">${esc(k.description)}</div>`:""}</div>
     <div class="mf" data-write>${cur?`<button class="btn danger" data-act="kit-photo-rm" data-id="${k.id}" data-idx="${idx}" data-confirm="Remove this photo?">Remove this photo</button><span style="flex:1"></span>`:""}
       <button class="btn ${cur?"":"primary"}" data-act="kit-photo-add" data-id="${k.id}" ${full?"disabled":""}>${full?`${St.KIT_PHOTO_MAX} photos (the most)`:"Add photo"}</button><button class="btn primary" data-act="close-modal">Done</button></div>`);}
-/* Wrap without a scan: ask which case the item went into (its home case first), or whether it travels loose. */
-function wrapCasePicker(job,l){const it=G.item(l.item_id);
+/* Wrap without a scan: ask which case the item went into (its home case first), whether it travels loose,
+   or which other case in the cage it went into (that case then joins the job). */
+const caseBtn=(l,c,extra)=>`<button type="button" class="row click" style="width:100%;background:none;border:0;border-top:1px solid var(--line);text-align:left" data-act="wrap-pick" data-line="${l.id}" data-case="${c.id}">${thumbHTML(c,true)}${tagHTML(c)}<span class="grow">${esc(c.name)}${extra||""}</span></button>`;
+function wrapPickOthersHTML(){const p=M.wpick;const job=S.jobs.get(p.job);const l=S.job_lines.get(p.line);if(!job||!l)return"";
+  const onJob=new Set(G.linesOf(job.id).map(x=>x.item_id));const toks=p.q.toLowerCase().split(/\s+/).filter(Boolean);
+  const pool=G.items().filter(c=>c.is_case&&!onJob.has(c.id)&&c.status!=="retired");
+  const hits=toks.length?pool.filter(c=>toks.every(t=>[c.tag,c.name,c.room,c.shelf].join(" ").toLowerCase().includes(t))).sort(G.byTag).slice(0,8):[];
+  return `<div class="scanbar"><input class="input" id="wpick-q" placeholder="Search all ${pool.length} cases: tag or name" value="${esc(p.q)}" autocomplete="off" style="font-size:15px;border-width:1px"></div>
+    ${toks.length?(hits.length?`<div class="panel" style="margin-top:6px">${hits.map(c=>{const why=G.caseUsable(job,c);
+      return why?`<div class="row muted">${thumbHTML(c,true)}${tagHTML(c)}<span class="grow">${esc(c.name)}<div class="small">${esc(why)}</div></span></div>`:caseBtn(l,c,`<div class="small muted">Not on this job yet. Picking it adds it.</div>`);}).join("")}</div>`
+      :`<div class="small muted" style="padding:6px 2px">No case matches "${esc(p.q)}". To add a new case, use Add gear and choose the Case category.</div>`):""}`;}
+function rerenderWpick(){const el=$("#wpick");if(!el)return;const had=document.activeElement&&document.activeElement.id==="wpick-q";el.innerHTML=wrapPickOthersHTML();
+  if(had){const i=$("#wpick-q");if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length);}}}
+function wrapCasePicker(job,l){const it=G.item(l.item_id);M.wpick={job:job.id,line:l.id,q:""};
   const cases=G.linesOf(job.id).filter(x=>x.state!=="left").map(x=>G.item(x.item_id)).filter(c=>c&&c.is_case)
     .sort((a,b)=>(b.id===it.home_case_id)-(a.id===it.home_case_id)||G.byTag(a,b));
   openModal(`${mh("Where did "+esc(it.tag)+" go?")}<div class="mb"><div class="row" style="padding:0;border:0">${thumbHTML(it)}<div class="grow"><b>${esc(it.name)}</b><div class="small muted">Ticked by hand. Choose the case it's packed in.</div></div></div>
-    <div class="panel">${cases.map(c=>`<button type="button" class="row click" style="width:100%;background:none;border:0;border-top:1px solid var(--line);text-align:left" data-act="wrap-pick" data-line="${l.id}" data-case="${c.id}">${thumbHTML(c,true)}${tagHTML(c)}<span class="grow">${esc(c.name)}</span>${c.id===it.home_case_id?chip("Its home case","ok"):""}</button>`).join("")||`<div class="empty">No cases on this job.</div>`}
+    <div><span class="eyebrow">Cases on this job</span><div class="panel" style="margin-top:6px">${cases.map(c=>caseBtn(l,c,c.id===it.home_case_id?` ${chip("Its home case","ok")}`:"")).join("")||`<div class="empty small">No cases went out on this job.</div>`}
       <button type="button" class="row click" style="width:100%;background:none;border:0;border-top:1px solid var(--line);text-align:left" data-act="wrap-pick" data-line="${l.id}" data-case="loose"><span class="grow"><b>Travelling loose</b><div class="small muted">Not in a case, for example a tripod or stand</div></span></button></div></div>
+    <div><span class="eyebrow">Another case</span><div class="small muted" style="margin:4px 0 6px">Packed into a case that wasn't on the pull sheet, like a spare bag? Find it here.</div><div id="wpick">${wrapPickOthersHTML()}</div></div></div>
     <div class="mf"><button class="btn" data-act="close-modal">Cancel</button></div>`);}
+/* Case check: tick off what lives in a fixed-contents case without scanning each item. Someone still has to look:
+   nothing starts ticked, "All here" leaves critical items for their own tick, and the history says it was a case check. */
+const ccTodo=(job,caseId)=>G.caseCheckLines(job,caseId).filter(l=>l.state==="out").length;
+const ccBtn=(job,c)=>{const n=ccTodo(job,c.id);return n?`<button class="btn small" data-write data-act="case-check" data-jid="${job.id}" data-id="${c.id}">Check contents (${n})</button>`:"";};
+function caseCheckModal(){const p=M.ccheck;const job=S.jobs.get(p.job);const c=G.item(p.case);if(!job||!c){closeModal();return;}
+  const ls=G.caseCheckLines(job,c.id);const todo=ls.filter(l=>l.state==="out");
+  const crit=todo.filter(l=>G.item(l.item_id).critical);const n=todo.filter(l=>p.ticked.has(l.id)).length;
+  const row=l=>{const i=G.item(l.item_id);const done=l.state==="packed";const on=done||p.ticked.has(l.id);
+    return `<div class="line ${on?"done":""}">${done?`<span class="tick" aria-pressed="true" title="Already packed">${CHECK}</span>`
+      :`<button type="button" class="tick" data-act="cc-tick" data-id="${l.id}" aria-pressed="${on}" aria-label="${on?"Ticked":"Tick"}: ${esc(i.name)}">${CHECK}</button>`}
+      ${thumbHTML(i)}<div class="grow"><div class="t">${tagHTML(i)}<b>${esc(i.name)}</b>${i.critical?`<span class="crit">Critical</span>`:""}</div>
+      <div class="small muted">${done?"Already packed"+(l.note===CASE_NOTE?" by case check":" (scanned)"):i.critical?"Critical: look for it and tick it yourself":"Lives in this case"}</div></div></div>`;};
+  openModal(`${mh("Check what's in "+esc(c.tag))}<div class="mb">
+    <div class="row" style="padding:0;border:0">${thumbHTML(c)}<div class="grow"><b>${esc(c.name)}</b><div class="small muted">Open the case and look. Tick each item you can see, or tap All here once you've checked everything is in. Anything not here stays on Still to pack, so you can find it or mark it missing.</div></div></div>
+    ${todo.length>1?`<button type="button" class="btn" data-act="cc-all">All here${crit.length?` except critical (${todo.length-crit.length})`:` (${todo.length})`}</button>`:""}
+    ${crit.length&&todo.length>1?`<div class="small muted">Critical items aren't included in All here. Find each one and tick it yourself.</div>`:""}
+    <div class="panel">${ls.map(row).join("")}</div></div>
+    <div class="mf"><button class="btn" data-act="close-modal">Cancel</button><button class="btn primary" data-write data-act="cc-save" ${n?"":"disabled"}>${n?`Confirm ${n} packed`:"Tick what's in the case"}</button></div>`);}
+const CASE_NOTE="Confirmed by case check";
 function noteForm(title,hint,formKey,data){openModal(`${mh(esc(title))}<form data-form="${formKey}" ${Object.entries(data).map(([k,v])=>`data-${k}="${esc(v)}"`).join(" ")}><div class="mb"><div>${esc(hint)}</div>
   <label class="f">What happened<textarea class="input" name="note" rows="3" autofocus></textarea></label></div><div class="mf"><button type="button" class="btn" data-act="close-modal">Cancel</button><button class="btn primary">Save</button></div></form>`);}
 
@@ -638,9 +670,19 @@ document.addEventListener("click",e=>{
       const cur=UI.wrapCase[job.id];
       if(cur&&G.item(cur)){const r=G.wrapScan(job,it.tag,cur);St.log("ticked by hand",{item_id:it.id,job_id:job.id,case_id:cur,note:"Wrap, label not scanned"});toast(r.msg,r.kind==="bad"?"bad":"ok");if(r.warn)toast(r.warn,"bad");break;}
       wrapCasePicker(job,l);return;}
+    case"case-check":{const j2=S.jobs.get(t.dataset.jid);if(!j2||!G.item(id))break;closeModal();M.ccheck={job:j2.id,case:id,ticked:new Set()};caseCheckModal();return;}
+    case"cc-tick":{if(!M.ccheck)return;const s=M.ccheck.ticked;s.has(id)?s.delete(id):s.add(id);caseCheckModal();return;}
+    case"cc-all":{const p=M.ccheck;if(!p)return;const j2=S.jobs.get(p.job);if(!j2)return;
+      G.caseCheckLines(j2,p.case).forEach(l=>{if(l.state==="out"&&!G.item(l.item_id).critical)p.ticked.add(l.id);});caseCheckModal();return;}
+    case"cc-save":{const p=M.ccheck;if(!p)return;const j2=S.jobs.get(p.job);const c=G.item(p.case);if(!j2||!c){closeModal();break;}
+      const left=G.caseCheckLines(j2,c.id).filter(l=>l.state==="out"&&!p.ticked.has(l.id)).length;
+      const r=G.confirmCase(j2,c.id,[...p.ticked]);closeModal();if(!r.ok){toast(r.msg,"bad");break;}
+      UI.wrapCase[j2.id]=c.id;LSx.set("gc-wrapcase",UI.wrapCase);
+      toast(`${r.n} packed in ${c.tag}`+(left?`. ${left} not ticked, still to pack`:""),left?"bad":"ok");break;}
     case"wrap-pick":{const l=lineById(t.dataset.line);const j2=l&&S.jobs.get(l.job_id);const it=l&&G.item(l.item_id);if(!l||!j2||!it){closeModal();break;}
       const c=t.dataset.case;closeModal();
       if(c==="loose"){G.wrapMark(j2,l,"loose");St.log("ticked by hand",{item_id:it.id,job_id:j2.id,note:"Wrap, travelling loose, label not scanned"});toast(`${it.tag} marked as travelling loose`,"ok");break;}
+      if(!G.lineFor(j2.id,c)){const a=G.addCaseAtWrap(j2,G.item(c));if(!a.ok){toast(a.msg,"bad");break;}toast(`${G.item(c).tag} added to this job`,"ok");}
       const r=G.wrapScan(j2,it.tag,c);UI.wrapCase[j2.id]=c;LSx.set("gc-wrapcase",UI.wrapCase);St.log("ticked by hand",{item_id:it.id,job_id:j2.id,case_id:c,note:"Wrap, label not scanned"});
       toast(r.msg+". Next ticks pack into this case too.","ok");if(r.warn)toast(r.warn,"bad");break;}
     case"studio-undo":{const l=lineById(id);if(l&&job)G.undoCheckIn(job,l);break;}
@@ -703,6 +745,7 @@ document.addEventListener("touchend",e=>{if(swipeX===null||!M.gal)return;const d
 document.addEventListener("input",e=>{const t=e.target;
   if(t.id==="pick-q"){M.picker.q=t.value;rerenderPicker();return;}
   if(t.id==="mpick-q"&&M.mpick){M.mpick.q=t.value;rerenderMpick();return;}
+  if(t.id==="wpick-q"&&M.wpick){M.wpick.q=t.value;rerenderWpick();return;}
   if(t.id==="label-skip"){UI.labelSkip=Math.max(0,parseInt(t.value,10)||0);fillPreviewSoon();return;}
   if(t.hasAttribute("data-keep")){UI.inputs[t.id]=t.value;render();}});
 let pv=0;function fillPreviewSoon(){clearTimeout(pv);pv=setTimeout(fillPreview,150);}

@@ -1,6 +1,6 @@
 /* Keeps the app itself on the phone so it opens with no signal. Data lives in the app's own offline copy, not here.
    Bump VERSION whenever you upload changed files, so phones pick up the new version. */
-const VERSION="gc-v5";
+const VERSION="gc-v7";
 const SHELL=["./","index.html","config.js","css/app.css","js/store.js","js/logic.js","js/demo.js","js/csv.js","js/scan.js","js/labels.js","js/app.js",
   "assets/logo-colour.png","assets/logo-white.png","assets/icon-192.png","assets/icon-512.png","manifest.webmanifest",
   "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.min.js","https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js","https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"];
